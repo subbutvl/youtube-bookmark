@@ -3,7 +3,7 @@ use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{ConnectOptions, Row};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl, WindowEvent};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// One link from the old YouTube Organizer database.
@@ -55,30 +55,54 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| format!("Could not write {path}: {e}"))
 }
 
-/// Opens a YouTube page (a channel) in the app's own browser window, reusing it if it's open.
-/// YouTube pages refuse to load inside the main window's page, but a separate webview works.
-/// That window gets no app permissions: the capabilities file only covers "main".
-#[tauri::command]
-async fn open_youtube_window(app: tauri::AppHandle, url: String, title: String) -> Result<(), String> {
+const CHANNEL_VIEW: &str = "channel-view";
+
+fn youtube_url(url: &str) -> Result<tauri::Url, String> {
     let parsed: tauri::Url = url.parse().map_err(|_| format!("Not a valid link: {url}"))?;
     let host = parsed.host_str().unwrap_or_default();
     if parsed.scheme() != "https" || !(host == "youtube.com" || host.ends_with(".youtube.com")) {
         return Err("Only YouTube pages open inside the app.".into());
     }
-    if let Some(w) = app.get_webview_window("youtube") {
-        w.navigate(parsed).map_err(|e| e.to_string())?;
-        let _ = w.set_title(&title);
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
-        return Ok(());
+    Ok(parsed)
+}
+
+/// Shows a YouTube channel page inside the viewer drawer. YouTube refuses to load in an
+/// iframe, so the page gets its own webview, placed over the drawer's body at the given
+/// position and size (CSS pixels from the window's top-left). It has no app permissions:
+/// the capabilities file only covers the main webview.
+#[tauri::command]
+async fn show_channel_view(app: tauri::AppHandle, url: String, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+    let parsed = youtube_url(&url)?;
+    let (pos, size) = (LogicalPosition::new(x, y), LogicalSize::new(width, height));
+    if let Some(view) = app.get_webview(CHANNEL_VIEW) {
+        view.navigate(parsed).map_err(|e| e.to_string())?;
+        view.set_position(pos).map_err(|e| e.to_string())?;
+        view.set_size(size).map_err(|e| e.to_string())?;
+        return view.show().map_err(|e| e.to_string());
     }
-    WebviewWindowBuilder::new(&app, "youtube", WebviewUrl::External(parsed))
-        .title(title)
-        .inner_size(1280.0, 860.0)
-        .min_inner_size(640.0, 480.0)
-        .build()
+    let window = app.get_window("main").ok_or("The main window is gone.")?;
+    window
+        .add_child(WebviewBuilder::new(CHANNEL_VIEW, WebviewUrl::External(parsed)), pos, size)
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Keeps the channel page lined up with the drawer when the window is resized.
+#[tauri::command]
+fn move_channel_view(app: tauri::AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+    if let Some(view) = app.get_webview(CHANNEL_VIEW) {
+        view.set_position(LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+        view.set_size(LogicalSize::new(width, height)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Removes the channel page when the drawer closes.
+#[tauri::command]
+fn close_channel_view(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(view) = app.get_webview(CHANNEL_VIEW) {
+        view.close().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -148,13 +172,13 @@ pub fn run() {
             build_tray(app)?;
             Ok(())
         })
-        // Closing the main window quits, even if a channel window is still open.
+        // Closing the main window quits, even while a channel page is showing.
         .on_window_event(|w, e| {
             if w.label() == "main" && matches!(e, WindowEvent::Destroyed) {
                 w.app_handle().exit(0);
             }
         })
-        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, open_youtube_window])
+        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, show_channel_view, move_channel_view, close_channel_view])
         .run(tauri::generate_context!())
         .expect("error while running TubeMarks");
 }

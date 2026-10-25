@@ -75,9 +75,25 @@ export async function pickLegacyDatabase(): Promise<{ name: string; rows: Legacy
   return { name: path.split(/[\\/]/).pop() ?? path, rows };
 }
 
-/** Opens a YouTube page in the app's own window (desktop), or a browser tab in the preview. */
-export async function openInAppWindow(url: string, title: string) {
-  if (!isTauri()) return openExternal(url);
+export interface ViewRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Shows a YouTube channel page over `rect` (desktop app only; YouTube can't be framed in a page). */
+export async function showChannelView(url: string, rect: ViewRect) {
   const { invoke } = await import('@tauri-apps/api/core');
-  await invoke('open_youtube_window', { url, title });
+  await invoke('show_channel_view', { url, ...rect });
+}
+
+export async function moveChannelView(rect: ViewRect) {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('move_channel_view', { ...rect });
+}
+
+export async function closeChannelView() {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('close_channel_view');
 }

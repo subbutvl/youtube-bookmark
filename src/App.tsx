@@ -8,7 +8,6 @@ import { ManageDialog } from './components/ManageDialog';
 import { QuickEdit, type QuickEditTarget } from './components/QuickEdit';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Viewer } from './components/Viewer';
-import { openInAppWindow } from './lib/platform';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { WindowControls } from './components/WindowControls';
 import type { AddResult } from './lib/library';
@@ -166,11 +165,8 @@ export default function App() {
   const onEdit = useCallback((id: string) => setModal({ kind: 'edit', id }), []);
   const onDelete = useCallback((id: string) => void deleteIds([id]), [deleteIds]);
   const onToggleWatched = useCallback((b: Bookmark) => void store.setWatched([b.id], !b.watched), [store]);
-  // Videos and Shorts play in the app; playlists list their videos; channels open in their own window.
-  const onView = useCallback((b: Bookmark) => {
-    if (b.type !== 'channel') return setModal({ kind: 'view', id: b.id });
-    openInAppWindow(b.channelUrl || b.url, b.title || b.youtubeId).catch((e) => toast({ text: `Couldn’t open the channel: ${errorText(e)}` }));
-  }, [toast]);
+  // Opens the viewer drawer: videos and Shorts play, playlists list their videos, channels show their page.
+  const onView = useCallback((b: Bookmark) => setModal({ kind: 'view', id: b.id }), []);
   const onQuickEdit = useCallback((id: string, kind: 'category' | 'tags', el: HTMLElement) => setQuickEdit({ id, kind, anchor: el.getBoundingClientRect() }), []);
   const closeQuickEdit = useCallback(() => setQuickEdit(null), []);
   const onTagClick = useCallback((id: string) => setView((v) => ({ ...v, tagIds: v.tagIds.includes(id) ? v.tagIds : [...v.tagIds, id] })), []);
