@@ -37,7 +37,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
     setError('');
     try {
       const picked = await pickTextFile();
-      if (picked) setFile({ name: picked.name, parsed: parseImportFile(picked.name, picked.text) });
+      if (picked) setFile({ name: picked.name, parsed: 'rows' in picked ? parseLegacyItems(picked.rows) : parseImportFile(picked.name, picked.text) });
     } catch (e) {
       setFile(null);
       setError(`Couldn’t read that file: ${errorText(e)}`);
@@ -105,7 +105,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
           <h3 style={{ margin: 0, fontSize: 15 }}>Import</h3>
           <div className="dropzone">
             <IconUpload size={22} />
-            <span style={{ fontWeight: 500 }}>A .ytbm.json backup, a .csv with a “url” column, or any .txt / .html file with YouTube links</span>
+            <span style={{ fontWeight: 500 }}>A .ytbm.json backup, a .csv with a “url” column, any .txt / .html file with YouTube links, or the old app’s .sqlite</span>
             <button type="button" className="btn btn-sm" onClick={choose}>Choose file</button>
           </div>
           {isTauri() && (
