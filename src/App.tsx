@@ -7,6 +7,8 @@ import { ImportExportDialog } from './components/ImportExportDialog';
 import { ManageDialog } from './components/ManageDialog';
 import { QuickEdit, type QuickEditTarget } from './components/QuickEdit';
 import { SettingsDialog } from './components/SettingsDialog';
+import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { WindowControls } from './components/WindowControls';
 import type { AddResult } from './lib/library';
 import { TYPE_PLURALS, type Bookmark, type BookmarkType } from './lib/types';
 import { applyView, DEFAULT_VIEW, groupByDay, SORT_LABELS, type SortKey, type ViewState } from './lib/view';
@@ -19,6 +21,7 @@ type Modal =
   | { kind: 'manage' }
   | { kind: 'io' }
   | { kind: 'settings' }
+  | { kind: 'shortcuts' }
   | null;
 
 const TYPES: BookmarkType[] = ['video', 'short', 'playlist', 'channel'];
@@ -170,6 +173,43 @@ export default function App() {
     setSelected((s) => ([...s].every((id) => ids.has(id)) ? s : new Set([...s].filter((id) => ids.has(id)))));
   }, [lib.bookmarks]);
 
+  // ----- keyboard shortcuts (listed in ShortcutsDialog) -----
+  useEffect(() => {
+    const focus = (id: string) => {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      el?.focus();
+      el?.select();
+    };
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      const ctrl = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      let handled = true;
+      if (ctrl && !e.shiftKey && key === 'l') focus('quick-add');
+      else if (ctrl && e.shiftKey && key === 'n') setModal({ kind: 'add', text: '' });
+      else if (ctrl && !e.shiftKey && key === 'f') focus('search');
+      else if (ctrl && !e.shiftKey && key === 'i') setModal({ kind: 'io' });
+      else if (ctrl && key === ',') setModal({ kind: 'settings' });
+      else if (ctrl && !e.shiftKey && key === 'm') setModal({ kind: 'manage' });
+      else if (ctrl && e.shiftKey && key === 'f') setShowFilters((s) => !s);
+      else if (ctrl && !e.shiftKey && key === 'h') setView((v) => ({ ...v, view: v.view === 'history' ? 'library' : 'history' }));
+      else if (ctrl && !e.shiftKey && key === 'd') setThemePref(theme === 'dark' ? 'light' : 'dark');
+      else if (ctrl && e.shiftKey && key === 'c') setDensity(density === 'compact' ? 'comfortable' : 'compact');
+      else if (modal || typing) handled = false; // the rest are single keys: leave them to dialogs and text boxes
+      else if (ctrl && key === 'a') setSelected(new Set(items.map((b) => b.id)));
+      else if (e.key === 'Delete' && selected.size) void deleteIds([...selected]);
+      else if (e.key === '/') focus('search');
+      else if (e.key === '?') setModal({ kind: 'shortcuts' });
+      else if (e.key === 'Escape' && selected.size) setSelected(new Set());
+      else if (e.key === 'Escape' && view.query) setView((v) => ({ ...v, query: '' }));
+      else handled = false;
+      if (handled) e.preventDefault();
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [modal, items, selected, deleteIds, theme, setThemePref, density, setDensity, view.query]);
+
   // ----- filter chips -----
   const chips: { label: string; remove: () => void }[] = [];
   if (view.view === 'history') chips.push({ label: 'History', remove: () => patch({ view: 'library' }) });
@@ -213,8 +253,8 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
+      <header className="topbar" data-tauri-drag-region>
+        <div className="brand" data-tauri-drag-region>
           <div className="brand-mark"><IconBookmark size={16} strokeWidth={2.4} /></div>
           TubeMarks
         </div>
@@ -231,7 +271,7 @@ export default function App() {
           <button type="submit" className="btn btn-primary"><IconPlus />Add</button>
           <button type="button" className="btn" onClick={() => setModal({ kind: 'add', text: '' })} title="Add several links at once">Add many</button>
         </form>
-        <div className="topbar-actions">
+        <div className="topbar-actions" data-tauri-drag-region>
           <button type="button" className="btn" onClick={() => setModal({ kind: 'io' })}><IconDownload />Import / Export</button>
           <button
             type="button"
@@ -243,7 +283,9 @@ export default function App() {
             {theme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
           </button>
           <button type="button" className="icon-btn" aria-label="Settings" title="Settings" onClick={() => setModal({ kind: 'settings' })}><IconSettings size={18} /></button>
+          <button type="button" className="icon-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => setModal({ kind: 'shortcuts' })}>?</button>
         </div>
+        <WindowControls />
       </header>
 
       <div className="body">
@@ -445,6 +487,7 @@ export default function App() {
           }}
         />
       )}
+      {modal?.kind === 'shortcuts' && <ShortcutsDialog onClose={() => setModal(null)} />}
       {modal?.kind === 'settings' && (
         <SettingsDialog
           onClose={() => setModal(null)}

@@ -63,6 +63,16 @@ export const useToast = () => useContext(ToastContext);
 export type ThemePref = 'light' | 'dark' | 'system';
 export type Density = 'comfortable' | 'compact';
 
+export const MINIMIZE_TO_TRAY_PREF = 'minimizeToTray';
+/** Whether the title bar's minimize button hides the window to the system tray (on unless turned off in Settings). */
+export function minimizeToTrayEnabled(): boolean {
+  try {
+    return localStorage.getItem(`tubemarks.${MINIMIZE_TO_TRAY_PREF}`) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
 export function usePref<T extends string>(key: string, initial: T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
     try {

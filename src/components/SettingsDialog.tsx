@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { errorText, useLibrary, useStore, type Density, type ThemePref } from '../state';
+import { isTauri } from '../lib/storage';
+import { errorText, MINIMIZE_TO_TRAY_PREF, useLibrary, usePref, useStore, type Density, type ThemePref } from '../state';
 import { Dialog } from './Dialog';
 
 interface Props {
@@ -18,6 +19,7 @@ export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, 
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const missing = store.needsMetadata.length;
+  const [toTray, setToTray] = usePref<'on' | 'off'>(MINIMIZE_TO_TRAY_PREF, 'on');
 
   const save = async () => {
     setBusy(true);
@@ -54,6 +56,13 @@ export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, 
             <button type="button" aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}>Compact</button>
           </div>
         </div>
+        {isTauri() && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
+            <input type="checkbox" checked={toTray === 'on'} onChange={(e) => setToTray(e.target.checked ? 'on' : 'off')} style={{ width: 18, height: 18 }} />
+            Minimize to the system tray
+            <span className="hint" style={{ fontWeight: 400 }}>Click the tray icon to bring TubeMarks back.</span>
+          </label>
+        )}
         <div className="field">
           <label htmlFor="api-key">YouTube Data API v3 key</label>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -70,10 +79,10 @@ export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, 
             <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{key.trim() ? 'Check and save' : source === 'settings' ? 'Remove' : 'Save'}</button>
           </div>
           <span className="hint">
-            {source === 'settings' && 'A key is saved in Settings on this computer.'}
-            {source === 'env' && 'Using the key from your .env.local file.'}
+            {source === 'settings' && 'Using the key saved in Settings on this computer. Remove it to go back to the default key.'}
+            {source === 'env' && 'Using the default key. Paste a key here to use your own instead.'}
             {source === 'none' && 'No key yet. Without one, bookmarks show only their thumbnail and link.'}
-            {' '}The key is stored in the app’s local database only, never in the code or exports.
+            {' '}Keys stay on this computer and never go into exports.
           </span>
           {status && <span className={status.ok ? 'ok' : 'error'} style={{ fontSize: 13 }}>{status.text}</span>}
         </div>

@@ -10,13 +10,15 @@ Built with [Tauri 2](https://tauri.app), React and TypeScript. Your library is a
 - Automatic grouping: Videos, Shorts, Playlists, Channels
 - Title, thumbnail, 1-line description, category and tags from YouTube (Data API v3)
 - Add, rename, recolor, merge and delete categories and tags
-- Card grid: 5 cards per row at 1200 px, 6 at 1440 px; compact mode fits more
+- Card grid: 6 cards per row (7 in compact mode), fewer on narrow windows
 - Search (title, channel, description, category, tags, notes), sort and filter
 - History: when each link was added, grouped by day
 - Watched / unwatched, toggled by hand (eye button on each card)
 - Duplicates are never stored: `youtu.be/ID`, `watch?v=ID&t=2s`, `?si=…`, `/@name/videos` and so on all count as the same bookmark
 - Import / export: full JSON backup, CSV, or plain list of links
 - Light, dark and system themes
+- Keyboard shortcuts (press `?` in the app for the list)
+- Frameless window with its own minimize, maximize and close buttons; minimize hides to the system tray (can be turned off in Settings)
 
 ## Run it
 
