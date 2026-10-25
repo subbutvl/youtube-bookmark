@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+# Local secrets and personal data: never commit
+.env.local
+.env.*.local
+data/
+*.ytbm.json
+*.sqlite

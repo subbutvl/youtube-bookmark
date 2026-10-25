@@ -1,0 +1,20 @@
+[package]
+name = "tubemarks"
+version = "0.1.0"
+description = "A desktop bookmark manager for YouTube videos, Shorts, playlists and channels"
+edition = "2021"
+
+[lib]
+name = "tubemarks_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
