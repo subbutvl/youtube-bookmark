@@ -11,7 +11,7 @@ import { IconExternal, IconEye } from './Icons';
 // Playlists are listed once per session; reopening one is instant and costs no quota.
 const playlistCache = new Map<string, PlaylistEntry[]>();
 
-/** Side drawer that plays a video or Short, lists a playlist's videos, or shows a channel's page. */
+/** Side drawer that lists a playlist's videos or shows a channel's page. Videos and Shorts use VideoPlayer. */
 export function Viewer({ b, onClose, onToggleWatched }: { b: Bookmark; onClose: () => void; onToggleWatched: (b: Bookmark) => void }) {
   const title = displayTitle(b);
   return (
@@ -21,7 +21,6 @@ export function Viewer({ b, onClose, onToggleWatched }: { b: Bookmark; onClose: 
       variant="viewer"
       footer={
         <>
-          {(b.type === 'video' || b.type === 'short') && <span className="hint">If the video won’t play here, its owner has turned off playback in other apps.</span>}
           <span className="spacer" />
           <button type="button" className="btn" aria-pressed={b.watched} onClick={() => onToggleWatched(b)}>
             <IconEye size={15} /> {b.watched ? 'Watched' : 'Mark watched'}
@@ -32,26 +31,8 @@ export function Viewer({ b, onClose, onToggleWatched }: { b: Bookmark; onClose: 
         </>
       }
     >
-      {b.type === 'playlist' ? <PlaylistList b={b} /> : b.type === 'channel' ? <ChannelPage b={b} /> : <Player b={b} />}
+      {b.type === 'playlist' ? <PlaylistList b={b} /> : <ChannelPage b={b} />}
     </Dialog>
-  );
-}
-
-function Player({ b }: { b: Bookmark }) {
-  const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(b.youtubeId)}?autoplay=1&rel=0&playsinline=1`;
-  return (
-    <div className="viewer-body">
-      <div className={`player${b.type === 'short' ? ' short' : ''}`}>
-        <iframe
-          src={src}
-          title={displayTitle(b)}
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
-          // YouTube's player refuses to start without a referrer (error 153).
-          referrerPolicy="strict-origin-when-cross-origin"
-        />
-      </div>
-    </div>
   );
 }
 

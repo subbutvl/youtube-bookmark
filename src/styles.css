@@ -325,7 +325,14 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .viewer-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; }
 .player { background: #000; width: 100%; height: 100%; }
 .player.short { aspect-ratio: 9 / 16; width: auto; height: 100%; }
-.player iframe { width: 100%; height: 100%; border: 0; display: block; }
+.floating-player { position: fixed; z-index: 21; background: #000; display: flex; flex-direction: column; }
+.floating-player iframe { flex: 1; width: 100%; min-height: 0; border: 0; display: block; }
+.floating-player.pip { right: 16px; bottom: 16px; width: 400px; height: 261px; border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); z-index: 19; }
+.floating-player.pip.short { width: 240px; height: 462px; }
+.pip-bar { display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 10px; background: #111; color: #fff; font-size: 12px; }
+.pip-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pip-bar button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #fff; cursor: pointer; }
+.pip-bar button:hover { background: rgba(255,255,255,.15); }
 .channel-host { flex: 1; min-height: 0; background: var(--surface2); display: grid; place-items: center; color: var(--muted); }
 .playlist-body { flex: 1; min-height: 0; }
 .playlist-summary { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }

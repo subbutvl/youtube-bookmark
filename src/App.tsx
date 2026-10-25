@@ -8,6 +8,7 @@ import { ManageDialog } from './components/ManageDialog';
 import { QuickEdit, type QuickEditTarget } from './components/QuickEdit';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Viewer } from './components/Viewer';
+import { VideoPlayer, type PlayerMode } from './components/VideoPlayer';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { WindowControls } from './components/WindowControls';
 import type { AddResult } from './lib/library';
@@ -166,7 +167,12 @@ export default function App() {
   const onDelete = useCallback((id: string) => void deleteIds([id]), [deleteIds]);
   const onToggleWatched = useCallback((b: Bookmark) => void store.setWatched([b.id], !b.watched), [store]);
   // Opens the viewer drawer: videos and Shorts play, playlists list their videos, channels show their page.
-  const onView = useCallback((b: Bookmark) => setModal({ kind: 'view', id: b.id }), []);
+  // Videos and Shorts go to the player, which can shrink to picture in picture while the library stays usable.
+  const [playing, setPlaying] = useState<{ id: string; mode: PlayerMode } | null>(null);
+  const onView = useCallback((b: Bookmark) => {
+    if (b.type === 'video' || b.type === 'short') setPlaying({ id: b.id, mode: 'drawer' });
+    else setModal({ kind: 'view', id: b.id });
+  }, []);
   const onQuickEdit = useCallback((id: string, kind: 'category' | 'tags', el: HTMLElement) => setQuickEdit({ id, kind, anchor: el.getBoundingClientRect() }), []);
   const closeQuickEdit = useCallback(() => setQuickEdit(null), []);
   const onTagClick = useCallback((id: string) => setView((v) => ({ ...v, tagIds: v.tagIds.includes(id) ? v.tagIds : [...v.tagIds, id] })), []);
@@ -224,6 +230,7 @@ export default function App() {
   if (view.failedOnly) chips.push({ label: 'Details missing', remove: () => patch({ failedOnly: false }) });
   if (view.query.trim()) chips.push({ label: `Search: “${view.query.trim()}”`, remove: () => patch({ query: '' }) });
 
+  const played = playing ? lib.bookmarks.find((b) => b.id === playing.id) : undefined;
   const viewing = modal?.kind === 'view' ? lib.bookmarks.find((b) => b.id === modal.id) : undefined;
   const editing = modal?.kind === 'edit' ? lib.bookmarks.find((b) => b.id === modal.id) : undefined;
   const groups = view.view === 'history' ? groupByDay(items) : [{ label: '', items }];
@@ -491,6 +498,16 @@ export default function App() {
           onImported={() => {
             if (store.hasApiKey) void fetchMetadata(store.getSnapshot().bookmarks.filter((b) => b.metadataStatus === 'pending').map((b) => b.id));
           }}
+        />
+      )}
+      {played && playing && (
+        <VideoPlayer
+          key={played.id}
+          b={played}
+          mode={playing.mode}
+          setMode={(mode) => setPlaying({ id: played.id, mode })}
+          onClose={() => setPlaying(null)}
+          onToggleWatched={onToggleWatched}
         />
       )}
       {viewing && <Viewer key={viewing.id} b={viewing} onClose={() => setModal(null)} onToggleWatched={onToggleWatched} />}
