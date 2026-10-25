@@ -106,14 +106,14 @@ interface SqlDb {
 }
 
 const BOOKMARK_COLUMNS = [
-  'id', 'url', 'type', 'youtube_id', 'dedupe_key', 'title', 'description', 'thumbnail_url', 'channel_name',
+  'id', 'url', 'type', 'youtube_id', 'dedupe_key', 'title', 'description', 'thumbnail_url', 'channel_name', 'channel_url',
   'category_id', 'duration_sec', 'published_at', 'view_count', 'item_count', 'notes', 'watched',
   'created_at', 'updated_at', 'metadata_status',
 ] as const;
 
 function bookmarkValues(b: Bookmark): unknown[] {
   return [
-    b.id, b.url, b.type, b.youtubeId, b.dedupeKey, b.title, b.description, b.thumbnailUrl, b.channelName,
+    b.id, b.url, b.type, b.youtubeId, b.dedupeKey, b.title, b.description, b.thumbnailUrl, b.channelName, b.channelUrl,
     b.categoryId, b.durationSec, b.publishedAt, b.viewCount, b.itemCount, b.notes, b.watched ? 1 : 0,
     b.createdAt, b.updatedAt, b.metadataStatus,
   ];
@@ -160,6 +160,7 @@ export class SqliteStorage implements Storage {
         description: r.description,
         thumbnailUrl: r.thumbnail_url,
         channelName: r.channel_name,
+        channelUrl: r.channel_url ?? '',
         categoryId: r.category_id,
         tagIds: tagsOf.get(r.id) ?? [],
         durationSec: r.duration_sec,
@@ -180,7 +181,7 @@ export class SqliteStorage implements Storage {
   async saveBookmarks(bookmarks: Bookmark[]) {
     const cols = BOOKMARK_COLUMNS.length;
     const updates = BOOKMARK_COLUMNS.filter((c) => c !== 'id' && c !== 'created_at').map((c) => `${c} = excluded.${c}`).join(', ');
-    // SQLite allows 999 bound parameters per statement in older builds; 40 rows × 19 columns stays under it.
+    // SQLite allows 999 bound parameters per statement in older builds; 40 rows × 20 columns stays under it.
     for (const batch of chunk(bookmarks, 40)) {
       await this.db.execute(
         `INSERT INTO bookmarks (${BOOKMARK_COLUMNS.join(', ')}) VALUES ${placeholders(batch.length, cols)}

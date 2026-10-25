@@ -13,6 +13,7 @@ export interface ImportItem {
   description?: string;
   thumbnailUrl?: string;
   channelName?: string;
+  channelUrl?: string;
   categoryName?: string | null;
   tagNames?: string[];
   durationSec?: number | null;
@@ -117,6 +118,7 @@ export function parseJsonBackup(text: string): ParsedImport {
         description: b.description || undefined,
         thumbnailUrl: b.thumbnailUrl || undefined,
         channelName: b.channelName || undefined,
+        channelUrl: b.channelUrl || undefined,
         categoryName: b.categoryId ? cat.get(b.categoryId) ?? null : null,
         tagNames: (b.tagIds ?? []).map((t: string) => tag.get(t)).filter(Boolean) as string[],
         durationSec: b.durationSec ?? null,
@@ -205,4 +207,26 @@ export function parseImportFile(name: string, text: string): ParsedImport {
   if (lower.endsWith('.json')) return parseJsonBackup(text);
   if (lower.endsWith('.csv')) return parseCsv(text);
   return parseLinks(text);
+}
+
+/** A row from the old YouTube Organizer app's `items` table. */
+export interface LegacyItem {
+  url: string;
+  type: string;
+  watched: boolean;
+  /** Milliseconds since the Unix epoch. */
+  dateAdded: number;
+}
+
+/**
+ * Old-app rows become bookmarks with just the link, type, watched flag and date
+ * added. Titles, categories and tags are fetched fresh from YouTube afterwards.
+ */
+export function parseLegacyItems(rows: LegacyItem[]): ParsedImport {
+  return finish(
+    rows.map((r): ImportItem | null => {
+      const base = fromUrl(r.url);
+      return base && { ...base, watched: r.watched, createdAt: r.dateAdded > 0 ? new Date(r.dateAdded).toISOString() : undefined };
+    }),
+  );
 }

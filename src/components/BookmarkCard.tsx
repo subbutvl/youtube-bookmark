@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { openExternal } from '../lib/platform';
 import { TYPE_LABELS, type Bookmark, type Category, type Tag } from '../lib/types';
 import { displayTitle, formatDate, metaLabel, relativeDay } from '../lib/view';
-import { IconEdit, IconEye, IconPlay, IconTrash } from './Icons';
+import { IconEdit, IconEye, IconPlay, IconPlus, IconTrash } from './Icons';
 
 interface Props {
   b: Bookmark;
@@ -16,9 +16,10 @@ interface Props {
   onDelete: (id: string) => void;
   onToggleWatched: (b: Bookmark) => void;
   onTagClick: (tagId: string) => void;
+  onQuickEdit: (id: string, kind: 'category' | 'tags', anchor: HTMLElement) => void;
 }
 
-function BookmarkCardImpl({ b, category, tags, selected, flash, fetching, onSelect, onEdit, onDelete, onToggleWatched, onTagClick }: Props) {
+function BookmarkCardImpl({ b, category, tags, selected, flash, fetching, onSelect, onEdit, onDelete, onToggleWatched, onTagClick, onQuickEdit }: Props) {
   const title = displayTitle(b);
   const open = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -49,26 +50,46 @@ function BookmarkCardImpl({ b, category, tags, selected, flash, fetching, onSele
       <div className="card-body">
         <a href={b.url} className="card-title" onClick={open} title={title}>{title}</a>
         <div className="card-sub">
-          <span className="ellipsis">{b.channelName || (fetching ? 'Fetching details…' : '')}</span>
+          {b.channelName && b.channelUrl ? (
+            <a
+              href={b.channelUrl}
+              className="channel-link"
+              title={`Open ${b.channelName} on YouTube`}
+              onClick={(e) => {
+                e.preventDefault();
+                void openExternal(b.channelUrl);
+              }}
+            >
+              {b.channelName}
+            </a>
+          ) : (
+            <span className="ellipsis">{b.channelName || (fetching ? 'Fetching details…' : '')}</span>
+          )}
           <span title={`Added ${formatDate(b.createdAt)}`} style={{ flex: 'none' }}>{relativeDay(b.createdAt)}</span>
         </div>
         <div className="card-desc" title={b.description}>
           {b.description || (b.metadataStatus === 'failed' ? <span className="status-dot failed">Couldn’t fetch details</span> : b.metadataStatus === 'partial' ? <span className="status-dot">Add an API key to fetch details</span> : '')}
         </div>
-        {tags.length > 0 && (
-          <div className="card-tags">
-            {shown.map((t) => (
-              <button type="button" key={t.id} className="tag-pill" title={`#${t.name}`} onClick={() => onTagClick(t.id)}>#{t.name}</button>
-            ))}
-            {tags.length > shown.length && <span className="tag-pill more" title={tags.slice(shown.length).map((t) => `#${t.name}`).join(' ')}>+{tags.length - shown.length}</span>}
-          </div>
-        )}
+        <div className="card-tags">
+          {shown.map((t) => (
+            <button type="button" key={t.id} className="tag-pill" title={`Show bookmarks tagged #${t.name}`} onClick={() => onTagClick(t.id)}>#{t.name}</button>
+          ))}
+          {tags.length > shown.length && <span className="tag-pill more" title={tags.slice(shown.length).map((t) => `#${t.name}`).join(' ')}>+{tags.length - shown.length}</span>}
+          <button type="button" className="tag-add" aria-label="Edit tags" title="Add or remove tags" onClick={(e) => onQuickEdit(b.id, 'tags', e.currentTarget)}>
+            <IconPlus size={11} />{tags.length ? '' : 'Tag'}
+          </button>
+        </div>
         <div className="card-foot">
-          {category ? (
-            <span className="cat-pill" title={category.name}><span className="swatch" style={{ background: category.color }} />{category.name}</span>
-          ) : (
-            <span className="status-dot">{b.type === 'video' || b.type === 'short' ? 'Uncategorized' : ''}</span>
-          )}
+          <button
+            type="button"
+            className={`cat-pill${category ? '' : ' unset'}`}
+            title={category ? `${category.name} (click to change)` : 'Set a category'}
+            aria-label={category ? `Category ${category.name}, change` : 'Set a category'}
+            onClick={(e) => onQuickEdit(b.id, 'category', e.currentTarget)}
+          >
+            {category && <span className="swatch" style={{ background: category.color }} />}
+            {category ? category.name : 'Uncategorized'}
+          </button>
           <button
             type="button"
             className="eye"

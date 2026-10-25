@@ -6,6 +6,7 @@ export interface FetchedMetadata {
   description: string;
   thumbnailUrl: string;
   channelName: string;
+  channelUrl: string;
   categoryName: string | null;
   tags: string[];
   durationSec: number | null;
@@ -72,6 +73,10 @@ function cleanTags(tags: string[] | undefined): string[] {
   return out;
 }
 
+function channelLink(id: string | undefined): string {
+  return id ? `https://www.youtube.com/channel/${id}` : '';
+}
+
 function chunks<T>(xs: T[], n: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
@@ -124,6 +129,7 @@ export class YouTubeApi {
           description: firstLine(s.description ?? ''),
           thumbnailUrl: bestThumb(s.thumbnails),
           channelName: s.channelTitle ?? '',
+          channelUrl: channelLink(s.channelId),
           categoryName: await this.categoryName(s.categoryId),
           tags: cleanTags(s.tags),
           durationSec: parseDuration(item.contentDetails?.duration),
@@ -147,6 +153,7 @@ export class YouTubeApi {
           description: firstLine(s.description ?? ''),
           thumbnailUrl: bestThumb(s.thumbnails),
           channelName: s.channelTitle ?? '',
+          channelUrl: channelLink(s.channelId),
           categoryName: null,
           tags: [],
           durationSec: null,
@@ -174,6 +181,7 @@ export class YouTubeApi {
       description: firstLine(s.description ?? ''),
       thumbnailUrl: bestThumb(s.thumbnails),
       channelName: s.customUrl ?? youtubeId,
+      channelUrl: s.customUrl?.startsWith('@') ? `https://www.youtube.com/${s.customUrl}` : channelLink(item.id),
       categoryName: null,
       tags: [],
       durationSec: null,

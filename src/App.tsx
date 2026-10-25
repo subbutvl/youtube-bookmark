@@ -5,6 +5,7 @@ import { EditDrawer } from './components/EditDrawer';
 import { IconBookmark, IconClose, IconDownload, IconFilter, IconMoon, IconPlus, IconSearch, IconSettings, IconSun } from './components/Icons';
 import { ImportExportDialog } from './components/ImportExportDialog';
 import { ManageDialog } from './components/ManageDialog';
+import { QuickEdit, type QuickEditTarget } from './components/QuickEdit';
 import { SettingsDialog } from './components/SettingsDialog';
 import type { AddResult } from './lib/library';
 import { TYPE_PLURALS, type Bookmark, type BookmarkType } from './lib/types';
@@ -37,6 +38,7 @@ export default function App() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const [quickUrl, setQuickUrl] = useState('');
   const [bulkTag, setBulkTag] = useState('');
+  const [quickEdit, setQuickEdit] = useState<QuickEditTarget | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const autoFetched = useRef(false);
 
@@ -76,7 +78,9 @@ export default function App() {
   useEffect(() => {
     if (autoFetched.current || !store.hasApiKey) return;
     autoFetched.current = true;
-    const pending = store.getSnapshot().bookmarks.filter((b) => b.metadataStatus === 'pending' || b.metadataStatus === 'partial');
+    const pending = store.getSnapshot().bookmarks.filter(
+      (b) => b.metadataStatus === 'pending' || b.metadataStatus === 'partial' || (b.metadataStatus === 'ok' && !b.channelUrl && b.type !== 'channel'),
+    );
     if (pending.length) void fetchMetadata(pending.map((b) => b.id));
   }, [store, fetchMetadata]);
 
@@ -156,6 +160,8 @@ export default function App() {
   const onEdit = useCallback((id: string) => setModal({ kind: 'edit', id }), []);
   const onDelete = useCallback((id: string) => void deleteIds([id]), [deleteIds]);
   const onToggleWatched = useCallback((b: Bookmark) => void store.setWatched([b.id], !b.watched), [store]);
+  const onQuickEdit = useCallback((id: string, kind: 'category' | 'tags', el: HTMLElement) => setQuickEdit({ id, kind, anchor: el.getBoundingClientRect() }), []);
+  const closeQuickEdit = useCallback(() => setQuickEdit(null), []);
   const onTagClick = useCallback((id: string) => setView((v) => ({ ...v, tagIds: v.tagIds.includes(id) ? v.tagIds : [...v.tagIds, id] })), []);
 
   // Drop selections for bookmarks that no longer exist.
@@ -194,6 +200,7 @@ export default function App() {
       onDelete={onDelete}
       onToggleWatched={onToggleWatched}
       onTagClick={onTagClick}
+      onQuickEdit={onQuickEdit}
     />
   );
 
@@ -296,7 +303,7 @@ export default function App() {
           )}
         </nav>
 
-        <main className={`main${selected.size ? ' selecting' : ''}`}>
+        <main className={`main${selected.size ? ' selecting' : ''}`} onScroll={quickEdit ? closeQuickEdit : undefined}>
           <div className="toolbar">
             <div className="search">
               <IconSearch />
@@ -426,6 +433,7 @@ export default function App() {
         </main>
       </div>
 
+      {quickEdit && <QuickEdit target={quickEdit} onClose={closeQuickEdit} />}
       {modal?.kind === 'add' && <AddDialog initialText={modal.text} onClose={() => setModal(null)} onDone={reportAdd} onShowExisting={showExisting} />}
       {modal?.kind === 'edit' && editing && <EditDrawer key={editing.id} bookmark={editing} onClose={() => setModal(null)} onDelete={onDelete} />}
       {modal?.kind === 'manage' && <ManageDialog onClose={() => setModal(null)} />}

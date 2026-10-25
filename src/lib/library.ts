@@ -222,6 +222,7 @@ export class LibraryStore {
         description: '',
         thumbnailUrl: instantThumbnail(p.type, p.youtubeId),
         channelName: '',
+        channelUrl: p.type === 'channel' ? p.url : '',
         categoryId: opts.categoryId ?? null,
         tagIds: tags.map((x) => x.id),
         durationSec: null,
@@ -312,6 +313,7 @@ export class LibraryStore {
       description: b.metadataStatus === 'ok' && b.description ? b.description : meta.description,
       thumbnailUrl: meta.thumbnailUrl || b.thumbnailUrl,
       channelName: meta.channelName || b.channelName,
+      channelUrl: meta.channelUrl || b.channelUrl,
       categoryId,
       tagIds: [...new Set([...b.tagIds, ...fetchedTags])],
       durationSec: meta.durationSec,
@@ -369,7 +371,19 @@ export class LibraryStore {
 
   /** Bookmarks that still need metadata (new imports, failures, added without a key). */
   get needsMetadata(): Bookmark[] {
-    return this.lib.bookmarks.filter((b) => b.metadataStatus !== 'ok');
+    return this.lib.bookmarks.filter((b) => b.metadataStatus !== 'ok' || (!b.channelUrl && b.type !== 'channel'));
+  }
+
+  /** Sets a bookmark's tags to exactly these names, creating any new ones. */
+  async setTags(id: string, names: string[]) {
+    await this.updateBookmark(id, {}, names);
+  }
+
+  /** Puts bookmarks in a category by name, creating it if needed. */
+  async setCategoryByName(ids: string[], name: string) {
+    const c = await this.ensureCategory(name);
+    await this.setCategory(ids, c.id);
+    return c;
   }
 
   // ----- import -----
@@ -414,6 +428,7 @@ export class LibraryStore {
         description: it.description ?? '',
         thumbnailUrl: it.thumbnailUrl || instantThumbnail(it.type, it.youtubeId),
         channelName: it.channelName ?? '',
+        channelUrl: it.channelUrl || (it.type === 'channel' ? it.url : ''),
         categoryId: it.categoryName ? (await this.ensureCategory(it.categoryName)).id : null,
         tagIds: it.tagNames?.length ? (await this.ensureTags(it.tagNames)).map((x) => x.id) : [],
         durationSec: it.durationSec ?? null,

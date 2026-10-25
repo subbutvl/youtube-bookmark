@@ -1,4 +1,5 @@
 import { isTauri } from './storage';
+import type { LegacyItem } from './backup';
 
 /** Opens a link in the default web browser (never inside the app). */
 export async function openExternal(url: string) {
@@ -58,4 +59,15 @@ export async function saveTextFile(defaultName: string, text: string, ext: strin
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   return true;
+}
+
+/** Asks for the old YouTube Organizer .sqlite file and reads its links (desktop app only). */
+export async function pickLegacyDatabase(): Promise<{ name: string; rows: LegacyItem[] } | null> {
+  if (!isTauri()) throw new Error('Importing from the old app works in the desktop app only.');
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const { invoke } = await import('@tauri-apps/api/core');
+  const path = await open({ multiple: false, directory: false, filters: [{ name: 'YouTube Organizer database', extensions: ['sqlite', 'db', 'sqlite3'] }] });
+  if (typeof path !== 'string') return null;
+  const rows = await invoke<LegacyItem[]>('read_legacy_db', { path });
+  return { name: path.split(/[\\/]/).pop() ?? path, rows };
 }

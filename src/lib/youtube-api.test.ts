@@ -36,6 +36,7 @@ describe('YouTubeApi.fetchMany', () => {
             title: `Title ${id}`,
             description: 'Line one\nLine two',
             channelTitle: 'Chan',
+            channelId: 'UCchan',
             categoryId: '27',
             tags: ['Claude Code', 'AI', 'ai', 'one', 'two', 'three', 'four'],
             thumbnails: { high: { url: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` } },
@@ -62,6 +63,8 @@ describe('YouTubeApi.fetchMany', () => {
     expect(calls.filter((c) => c.startsWith('videoCategories?'))).toHaveLength(1);
     const v = res.get(`video:${ids[0]}`)!;
     expect(v).toMatchObject({ title: `Title ${ids[0]}`, description: 'Line one', categoryName: 'Education', durationSec: 245, viewCount: 1234 });
+    expect(v.channelUrl).toBe('https://www.youtube.com/channel/UCchan');
+    expect(res.get('channel:@known')?.channelUrl).toBe('https://www.youtube.com/@known');
     expect(v.tags).toEqual(['claude-code', 'ai', 'one', 'two', 'three']);
     expect(res.get('playlist:PL1')?.itemCount).toBe(24);
     expect(res.get('channel:@known')?.title).toBe('Known');

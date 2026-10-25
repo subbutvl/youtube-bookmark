@@ -112,7 +112,7 @@ a { color: inherit; text-decoration: none; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 8px; }
 .tag-chip {
   height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: transparent;
-  color: var(--muted); font-size: 12px;
+  color: var(--muted); font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tag-chip[aria-pressed='true'] { background: var(--text); color: var(--bg); border-color: var(--text); }
 
@@ -184,8 +184,8 @@ a { color: inherit; text-decoration: none; }
 .card-foot .cat-pill, .card-foot .tag-pill { flex: 0 1 auto; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-foot .cat-pill { display: inline-block; }
 .card-foot .cat-pill .swatch { display: inline-block; margin-right: 5px; vertical-align: 0; }
-.card-tags { display: flex; gap: 4px; padding-top: 2px; min-width: 0; overflow: hidden; }
-.card-tags .tag-pill { flex: 0 1 auto; min-width: 52px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: none; cursor: pointer; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 2px; min-width: 0; }
+.card-tags .tag-pill { flex: 0 1 auto; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: none; cursor: pointer; }
 .card-tags .tag-pill.more { flex: none; cursor: default; }
 .cat-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: var(--chip); font-size: 11px; font-weight: 500; }
 .cat-pill .swatch { width: 7px; height: 7px; border-radius: 2px; }
@@ -274,3 +274,28 @@ a { color: inherit; text-decoration: none; }
   .manage-cols { grid-template-columns: 1fr; }
   .manage-cols > section + section { border-left: 0; border-top: 1px solid var(--border); }
 }
+
+/* ---------- quick edit popover ---------- */
+.quick-edit {
+  position: fixed; z-index: 25; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+}
+.quick-edit .input { height: 36px; }
+.qe-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; }
+.qe-item {
+  display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 8px; border: 0; border-radius: 6px;
+  background: transparent; text-align: left; cursor: pointer; font-size: 13px;
+}
+.qe-item:hover, .qe-item[aria-selected='true'] { background: var(--surface2); }
+.qe-item .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qe-item input { margin: 0; }
+.card-sub a.channel-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-sub a.channel-link:hover { text-decoration: underline; color: var(--text); }
+button.cat-pill { border: 0; cursor: pointer; color: inherit; font: inherit; font-size: 11px; font-weight: 500; }
+button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.cat-pill.unset { background: transparent; border: 1px dashed var(--border-strong); color: var(--muted); }
+.tag-add {
+  flex: none; height: 21px; padding: 0 7px; border-radius: 999px; border: 1px dashed var(--border-strong);
+  background: transparent; color: var(--muted); font-size: 11px; display: inline-flex; align-items: center; gap: 3px;
+}
+.tag-add:hover { color: var(--text); border-color: var(--text); }
