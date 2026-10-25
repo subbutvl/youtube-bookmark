@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { openExternal } from '../lib/platform';
 import { TYPE_LABELS, type Bookmark, type Category, type Tag } from '../lib/types';
 import { displayTitle, formatDate, metaLabel, relativeDay } from '../lib/view';
-import { IconEdit, IconEye, IconPlay, IconPlus, IconTrash } from './Icons';
+import { IconEdit, IconExternal, IconEye, IconPlay, IconPlus, IconTrash } from './Icons';
 
 interface Props {
   b: Bookmark;
@@ -17,19 +17,20 @@ interface Props {
   onToggleWatched: (b: Bookmark) => void;
   onTagClick: (tagId: string) => void;
   onQuickEdit: (id: string, kind: 'category' | 'tags', anchor: HTMLElement) => void;
+  onView: (b: Bookmark) => void;
 }
 
-function BookmarkCardImpl({ b, category, tags, selected, flash, fetching, onSelect, onEdit, onDelete, onToggleWatched, onTagClick, onQuickEdit }: Props) {
+function BookmarkCardImpl({ b, category, tags, selected, flash, fetching, onSelect, onEdit, onDelete, onToggleWatched, onTagClick, onQuickEdit, onView }: Props) {
   const title = displayTitle(b);
   const open = (e: React.MouseEvent) => {
     e.preventDefault();
-    void openExternal(b.url);
+    onView(b);
   };
   const meta = metaLabel(b);
   const shown = tags.slice(0, 2);
   return (
     <article className={`card${selected ? ' selected' : ''}${flash ? ' flash' : ''}`} data-id={b.id}>
-      <a href={b.url} className={`thumb ${b.type}${b.watched ? ' watched' : ''}`} onClick={open} aria-label={`Open ${title} on YouTube`}>
+      <a href={b.url} className={`thumb ${b.type}${b.watched ? ' watched' : ''}`} onClick={open} aria-label={b.type === 'playlist' ? `Show the videos in ${title}` : b.type === 'channel' ? `Open ${title}` : `Play ${title}`}>
         {b.thumbnailUrl ? (
           <img src={b.thumbnailUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
         ) : (
@@ -44,6 +45,7 @@ function BookmarkCardImpl({ b, category, tags, selected, flash, fetching, onSele
         <input type="checkbox" checked={selected} onChange={() => onSelect(b.id)} />
       </label>
       <div className="card-actions">
+        <button type="button" aria-label="Open in browser" title="Open in browser" onClick={() => void openExternal(b.url)}><IconExternal size={14} /></button>
         <button type="button" aria-label="Edit bookmark" title="Edit" onClick={() => onEdit(b.id)}><IconEdit size={14} /></button>
         <button type="button" aria-label="Delete bookmark" title="Delete" onClick={() => onDelete(b.id)}><IconTrash size={14} /></button>
       </div>

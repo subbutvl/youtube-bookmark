@@ -76,4 +76,21 @@ describe('YouTubeApi.fetchMany', () => {
       new Response(JSON.stringify({ error: { message: 'API key not valid', errors: [{ reason: 'badRequest' }] } }), { status: 400 })) as typeof fetch);
     await expect(api.verifyKey()).rejects.toBeInstanceOf(YouTubeApiError);
   });
+
+  it('lists every page of a playlist with lengths, marking missing videos', async () => {
+    const calls: string[] = [];
+    const page = (ids: string[], next?: string) => ({
+      items: ids.map((id) => ({ snippet: { title: id === 'gone' ? 'Deleted video' : `T ${id}`, thumbnails: {} }, contentDetails: { videoId: id } })),
+      nextPageToken: next,
+    });
+    const api = new YouTubeApi('KEY', fakeFetch({
+      playlistItems: (p) => (p.get('pageToken') === 'P2' ? page(['c']) : page(['a', 'gone', 'b'], 'P2')),
+      videos: (p) => ({ items: p.get('id')!.split(',').filter((id) => id !== 'gone').map((id) => ({ id, contentDetails: { duration: 'PT1M' } })) }),
+    }, calls));
+    const list = await api.playlistItems('PL1');
+    expect(list.map((i) => [i.position, i.videoId, i.available, i.durationSec])).toEqual([
+      [1, 'a', true, 60], [2, 'gone', false, null], [3, 'b', true, 60], [4, 'c', true, 60],
+    ]);
+    expect(calls.filter((c) => c.startsWith('playlistItems?'))).toHaveLength(2);
+  });
 });

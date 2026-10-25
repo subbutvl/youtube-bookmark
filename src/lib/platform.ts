@@ -74,3 +74,10 @@ export async function pickLegacyDatabase(): Promise<{ name: string; rows: Legacy
   const rows = await invoke<LegacyItem[]>('read_legacy_db', { path });
   return { name: path.split(/[\\/]/).pop() ?? path, rows };
 }
+
+/** Opens a YouTube page in the app's own window (desktop), or a browser tab in the preview. */
+export async function openInAppWindow(url: string, title: string) {
+  if (!isTauri()) return openExternal(url);
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('open_youtube_window', { url, title });
+}

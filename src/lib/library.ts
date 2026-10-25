@@ -68,6 +68,12 @@ export class LibraryStore {
     return this.fetching.has(id);
   }
 
+  /** Lists a playlist's videos and lengths for the viewer. Needs an API key. */
+  async playlistItems(playlistId: string) {
+    if (!this.apiKey) throw new Error('Add your YouTube API key in Settings to list this playlist.');
+    return this.makeApi(this.apiKey).playlistItems(playlistId);
+  }
+
   async setApiKey(key: string) {
     await this.storage.setSetting(API_KEY_SETTING, key.trim());
     this.apiKey = key.trim() || this.envApiKey;

@@ -7,6 +7,8 @@ import { ImportExportDialog } from './components/ImportExportDialog';
 import { ManageDialog } from './components/ManageDialog';
 import { QuickEdit, type QuickEditTarget } from './components/QuickEdit';
 import { SettingsDialog } from './components/SettingsDialog';
+import { Viewer } from './components/Viewer';
+import { openInAppWindow } from './lib/platform';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { WindowControls } from './components/WindowControls';
 import type { AddResult } from './lib/library';
@@ -22,6 +24,7 @@ type Modal =
   | { kind: 'io' }
   | { kind: 'settings' }
   | { kind: 'shortcuts' }
+  | { kind: 'view'; id: string }
   | null;
 
 const TYPES: BookmarkType[] = ['video', 'short', 'playlist', 'channel'];
@@ -163,6 +166,11 @@ export default function App() {
   const onEdit = useCallback((id: string) => setModal({ kind: 'edit', id }), []);
   const onDelete = useCallback((id: string) => void deleteIds([id]), [deleteIds]);
   const onToggleWatched = useCallback((b: Bookmark) => void store.setWatched([b.id], !b.watched), [store]);
+  // Videos and Shorts play in the app; playlists list their videos; channels open in their own window.
+  const onView = useCallback((b: Bookmark) => {
+    if (b.type !== 'channel') return setModal({ kind: 'view', id: b.id });
+    openInAppWindow(b.channelUrl || b.url, b.title || b.youtubeId).catch((e) => toast({ text: `Couldn’t open the channel: ${errorText(e)}` }));
+  }, [toast]);
   const onQuickEdit = useCallback((id: string, kind: 'category' | 'tags', el: HTMLElement) => setQuickEdit({ id, kind, anchor: el.getBoundingClientRect() }), []);
   const closeQuickEdit = useCallback(() => setQuickEdit(null), []);
   const onTagClick = useCallback((id: string) => setView((v) => ({ ...v, tagIds: v.tagIds.includes(id) ? v.tagIds : [...v.tagIds, id] })), []);
@@ -220,6 +228,7 @@ export default function App() {
   if (view.failedOnly) chips.push({ label: 'Details missing', remove: () => patch({ failedOnly: false }) });
   if (view.query.trim()) chips.push({ label: `Search: “${view.query.trim()}”`, remove: () => patch({ query: '' }) });
 
+  const viewing = modal?.kind === 'view' ? lib.bookmarks.find((b) => b.id === modal.id) : undefined;
   const editing = modal?.kind === 'edit' ? lib.bookmarks.find((b) => b.id === modal.id) : undefined;
   const groups = view.view === 'history' ? groupByDay(items) : [{ label: '', items }];
   const watchedCount = lib.bookmarks.filter((b) => b.watched).length;
@@ -241,6 +250,7 @@ export default function App() {
       onToggleWatched={onToggleWatched}
       onTagClick={onTagClick}
       onQuickEdit={onQuickEdit}
+      onView={onView}
     />
   );
 
@@ -487,6 +497,7 @@ export default function App() {
           }}
         />
       )}
+      {viewing && <Viewer key={viewing.id} b={viewing} onClose={() => setModal(null)} onToggleWatched={onToggleWatched} />}
       {modal?.kind === 'shortcuts' && <ShortcutsDialog onClose={() => setModal(null)} />}
       {modal?.kind === 'settings' && (
         <SettingsDialog

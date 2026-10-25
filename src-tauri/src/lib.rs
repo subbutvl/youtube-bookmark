@@ -3,7 +3,7 @@ use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{ConnectOptions, Row};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// One link from the old YouTube Organizer database.
@@ -53,6 +53,33 @@ fn read_text_file(path: String) -> Result<String, String> {
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| format!("Could not write {path}: {e}"))
+}
+
+/// Opens a YouTube page (a channel) in the app's own browser window, reusing it if it's open.
+/// YouTube pages refuse to load inside the main window's page, but a separate webview works.
+/// That window gets no app permissions: the capabilities file only covers "main".
+#[tauri::command]
+async fn open_youtube_window(app: tauri::AppHandle, url: String, title: String) -> Result<(), String> {
+    let parsed: tauri::Url = url.parse().map_err(|_| format!("Not a valid link: {url}"))?;
+    let host = parsed.host_str().unwrap_or_default();
+    if parsed.scheme() != "https" || !(host == "youtube.com" || host.ends_with(".youtube.com")) {
+        return Err("Only YouTube pages open inside the app.".into());
+    }
+    if let Some(w) = app.get_webview_window("youtube") {
+        w.navigate(parsed).map_err(|e| e.to_string())?;
+        let _ = w.set_title(&title);
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "youtube", WebviewUrl::External(parsed))
+        .title(title)
+        .inner_size(1280.0, 860.0)
+        .min_inner_size(640.0, 480.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn migrations() -> Vec<Migration> {
@@ -121,7 +148,13 @@ pub fn run() {
             build_tray(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db])
+        // Closing the main window quits, even if a channel window is still open.
+        .on_window_event(|w, e| {
+            if w.label() == "main" && matches!(e, WindowEvent::Destroyed) {
+                w.app_handle().exit(0);
+            }
+        })
+        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, open_youtube_window])
         .run(tauri::generate_context!())
         .expect("error while running TubeMarks");
 }
