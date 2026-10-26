@@ -457,7 +457,7 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .group-peek { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 
 /* ---------- links: table ---------- */
-.table-wrap { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; container-type: inline-size; }
+.table-wrap { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: clip; container-type: inline-size; flex: none; }
 /* Fixed layout: the title takes what the other columns leave, so the table never scrolls sideways. */
 .link-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .link-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--surface); overflow: hidden; text-overflow: ellipsis; }
@@ -534,7 +534,7 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .rss-title h2 { margin: 0; font-size: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rss-title .input { max-width: 420px; font-size: 16px; }
 .rss-suggest { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-.rss-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.rss-list { flex: none; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
 .rss-item { position: relative; display: flex; border-bottom: 1px solid var(--border); }
 .rss-item:last-of-type { border-bottom: 0; }
 .rss-item.cursor { box-shadow: inset 3px 0 0 var(--focus); }
