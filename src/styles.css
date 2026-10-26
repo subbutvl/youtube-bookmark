@@ -65,7 +65,11 @@ a { color: inherit; text-decoration: none; }
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 200px; font-weight: 700; font-size: 16px; }
 .brand-mark { width: 32px; height: 32px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; color: #fff; }
-.addform { display: flex; gap: 8px; flex: 1 1 260px; max-width: 680px; min-width: 220px; }
+.addform { display: flex; gap: 8px; flex: 1 1 260px; max-width: 680px; min-width: 150px; }
+.addform .input { min-width: 0; }
+/* One line always: the add box gives up width before anything wraps. */
+.topbar { flex-wrap: nowrap; }
+.mode-switch, .topbar-actions, .win-controls, .brand { flex: none; }
 .topbar-actions { display: flex; gap: 6px; margin-left: auto; }
 .topbar { user-select: none; padding-right: 0; }
 .topbar .icon-btn { font-weight: 700; }
@@ -516,7 +520,7 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
   .topbar-actions .btn-label { display: none; }
   .topbar-actions .btn { padding: 0 10px; }
 }
-@media (max-width: 1280px) {
+@media (max-width: 1700px) {
   .addform .btn-label { display: none; }
   .mode-switch .count { display: none; }
 }
@@ -551,7 +555,7 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .dot-toggle { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--muted); display: inline-block; }
 .dot-toggle.on { background: var(--focus); border-color: var(--focus); }
 .btn-danger { border-color: var(--danger); color: var(--danger); }
-@media (max-width: 1200px) {
+@media (max-width: 1360px) {
   .mode-switch button { padding: 0 7px; font-size: 13px; }
   .topbar { gap: 12px 10px; }
 }

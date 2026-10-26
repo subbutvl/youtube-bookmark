@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { MODES, PLACEHOLDER_MODES, useLibrary, useLinks, useRss, type Mode } from '../state';
-import { IconBookmark, IconDownload, IconMoon, IconPlus, IconSettings, IconSun, IconUpload } from './Icons';
+import { IconBookmark, IconList, IconDownload, IconMoon, IconPlus, IconSettings, IconSun, IconUpload } from './Icons';
 import { WindowControls } from './WindowControls';
 
 interface Props {
@@ -69,7 +69,7 @@ export function Header({ mode, setMode, theme, toggleTheme, onQuickAdd, onAddMan
           onChange={(e) => setText(e.target.value)}
         />
         <button type="submit" className="btn btn-primary" disabled={!canAdd}><IconPlus /><span className="btn-label">Add</span></button>
-        <button type="button" className="btn" disabled={!canAdd || mode === 'rss'} onClick={() => { onAddMany(text.trim()); setText(''); }} title="Add several links at once (Ctrl+Shift+N)">Add many</button>
+        <button type="button" className="btn" disabled={!canAdd || mode === 'rss'} onClick={() => { onAddMany(text.trim()); setText(''); }} title="Add several links at once (Ctrl+Shift+N)" aria-label="Add many"><IconList size={15} /><span className="btn-label">Add many</span></button>
       </form>
       <div className="topbar-actions" data-tauri-drag-region>
         <button type="button" className="btn" onClick={onImport} disabled={!onImport} title="Import (Ctrl+I)"><IconUpload /><span className="btn-label">Import</span></button>
