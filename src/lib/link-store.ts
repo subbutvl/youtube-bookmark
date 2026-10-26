@@ -437,8 +437,9 @@ export class LinkStore {
   /**
    * Adds the items that aren't saved yet. With `reapplyFolders`, links already saved also take
    * the file's folder as their category, and the tags an earlier import made from folders go.
+   * With `skipNew`, nothing is added (only folders are re-applied).
    */
-  async importItems(items: LinkImportItem[], mode: 'merge' | 'replace', opts: { reapplyFolders?: boolean } = {}) {
+  async importItems(items: LinkImportItem[], mode: 'merge' | 'replace', opts: { reapplyFolders?: boolean; skipNew?: boolean } = {}) {
     if (mode === 'replace') {
       await this.storage.clear();
       this.lib = { links: [], categories: [], tags: [] };
@@ -466,6 +467,8 @@ export class LinkStore {
         }
         continue;
       }
+      // "Update folders only": links deleted since an earlier import stay deleted.
+      if (opts.skipNew && mode === 'merge') continue;
       const t = it.createdAt ?? now();
       const section = sectionFor(it.domain);
       fresh.push({

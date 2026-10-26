@@ -21,6 +21,7 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
   const [file, setFile] = useState<{ name: string; parsed: ParsedLinkImport } | null>(null);
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
   const [reapply, setReapply] = useState(true);
+  const [addNew, setAddNew] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [browsers, setBrowsers] = useState<BrowserBookmarkFile[]>([]);
@@ -62,12 +63,12 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
     if (!file) return;
     setBusy(true);
     try {
-      const r = await store.importItems(file.parsed.items, mode, { reapplyFolders: mode === 'merge' && reapply && file.parsed.hasFolders });
-      const yr = file.parsed.youtube.length ? await ytStore.importItems(file.parsed.youtube, 'merge') : { added: 0, duplicates: 0 };
-      const parts = [`Imported ${r.added.toLocaleString()} link${r.added === 1 ? '' : 's'}`];
+      const r = await store.importItems(file.parsed.items, mode, { reapplyFolders: mode === 'merge' && reapply && file.parsed.hasFolders, skipNew: mode === 'merge' && !addNew });
+      const yr = file.parsed.youtube.length && (mode === 'replace' || addNew) ? await ytStore.importItems(file.parsed.youtube, 'merge') : { added: 0, duplicates: 0 };
+      const parts = r.added || !r.updated ? [`Imported ${r.added.toLocaleString()} link${r.added === 1 ? '' : 's'}`] : [];
       if (yr.added) parts.push(`${yr.added.toLocaleString()} YouTube bookmark${yr.added === 1 ? '' : 's'}`);
       const skipped = r.duplicates + yr.duplicates + file.parsed.repeated;
-      if (r.updated) parts.push(`moved ${r.updated.toLocaleString()} saved link${r.updated === 1 ? '' : 's'} into their folders`);
+      if (r.updated) parts.push(`${parts.length ? 'moved' : 'Moved'} ${r.updated.toLocaleString()} saved link${r.updated === 1 ? '' : 's'} into their folders`);
       toast({ text: `${parts.join(', ')}${skipped ? `. Skipped ${skipped.toLocaleString()} duplicates` : ''}.` }, 10000);
       onImported(r.added, yr.added);
       onClose();
@@ -78,7 +79,8 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
   };
 
   const canReapply = mode === 'merge' && !!file?.parsed.hasFolders && (preview?.duplicates ?? 0) > 0;
-  const total = (preview?.added ?? 0) + (ytPreview?.added ?? 0) + (canReapply && reapply ? preview!.duplicates : 0);
+  const newCount = mode === 'merge' && !addNew ? 0 : (preview?.added ?? 0) + (ytPreview?.added ?? 0);
+  const total = newCount + (canReapply && reapply ? preview!.duplicates : 0);
 
   return (
     <Dialog
@@ -91,7 +93,7 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
           <button type="button" className="btn" onClick={onClose}>{file ? 'Cancel' : 'Close'}</button>
           {file && (
             <button type="button" className="btn btn-primary" disabled={busy || !total} onClick={doImport}>
-              {busy ? 'Importing…' : canReapply && reapply && !(preview?.added || ytPreview?.added) ? 'Update folders' : `Import ${((preview?.added ?? 0) + (ytPreview?.added ?? 0)).toLocaleString()}`}
+              {busy ? 'Importing…' : canReapply && reapply && !newCount ? 'Update folders only' : `Import ${newCount.toLocaleString()}`}
             </button>
           )}
         </>
@@ -135,6 +137,15 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
                 <input type="radio" name="link-mode" checked={mode === 'replace'} onChange={() => setMode('replace')} /> Replace my links
               </label>
             </fieldset>
+            {mode === 'merge' && (preview.added > 0 || ytPreview.added > 0) && (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <input type="checkbox" checked={addNew} onChange={(e) => setAddNew(e.target.checked)} style={{ marginTop: 3 }} />
+                <span>
+                  Add the {(preview.added + ytPreview.added).toLocaleString()} links I don’t have yet
+                  <span className="hint" style={{ display: 'block' }}>Untick to leave out links you deleted since an earlier import.</span>
+                </span>
+              </label>
+            )}
             {canReapply && (
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                 <input type="checkbox" checked={reapply} onChange={(e) => setReapply(e.target.checked)} style={{ marginTop: 3 }} />

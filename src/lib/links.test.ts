@@ -156,6 +156,14 @@ describe('LinkStore', () => {
     expect(lib.categories.map((c) => c.name)).toEqual(['Dev / Rust']);
   });
 
+  it('can re-apply folders without bringing back deleted links', async () => {
+    const { store } = await makeStore();
+    await store.importItems([{ ...parseLink('https://doc.rust-lang.org/book/')!, categoryName: 'Dev' }], 'merge');
+    const res = await store.importItems(parseBookmarksHtml(BOOKMARKS_HTML).items, 'merge', { reapplyFolders: true, skipNew: true });
+    expect(res).toMatchObject({ added: 0, updated: 1 });
+    expect(store.getSnapshot().links).toHaveLength(1);
+  });
+
   it('sends Git and Wikipedia links to their tabs and moves links between tabs', async () => {
     const { store } = await makeStore();
     const r = await store.addUrls(['https://github.com/a/b', 'https://en.wikipedia.org/wiki/Rust', 'https://example.com']);
