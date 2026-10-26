@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { errorText, useEscape, useLibrary, useStore, useToast } from '../state';
+import { errorText, useEscape, useTaxonomy, useToast, type Mode } from '../state';
 import { IconPlus } from './Icons';
 
 export interface QuickEditTarget {
@@ -11,14 +11,13 @@ export interface QuickEditTarget {
 const WIDTH = 280;
 
 /** Small popover for changing one bookmark's category or tags right from its card. */
-export function QuickEdit({ target, onClose }: { target: QuickEditTarget; onClose: () => void }) {
-  const store = useStore();
-  const lib = useLibrary();
+export function QuickEdit({ target, onClose, mode = 'youtube' }: { target: QuickEditTarget; onClose: () => void; mode?: Mode }) {
+  const { ops: store, items, categories, tags: allTags } = useTaxonomy(mode);
   const toast = useToast();
   const ref = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [pos, setPos] = useState({ top: target.anchor.bottom + 6, left: target.anchor.left });
-  const b = lib.bookmarks.find((x) => x.id === target.id);
+  const b = items.find((x) => x.id === target.id);
   useEscape(onClose);
 
   // Keep the popover on screen: flip above the anchor if there's no room below.
@@ -43,8 +42,8 @@ export function QuickEdit({ target, onClose }: { target: QuickEditTarget; onClos
 
   let body;
   if (target.kind === 'category') {
-    const cats = [...lib.categories].sort((x, y) => x.name.localeCompare(y.name)).filter((c) => c.name.toLowerCase().includes(ql));
-    const exact = lib.categories.some((c) => c.name.toLowerCase() === ql);
+    const cats = [...categories].sort((x, y) => x.name.localeCompare(y.name)).filter((c) => c.name.toLowerCase().includes(ql));
+    const exact = categories.some((c) => c.name.toLowerCase() === ql);
     const pick = (fn: () => Promise<unknown>) => run(async () => { await fn(); onClose(); });
     body = (
       <>
@@ -81,13 +80,13 @@ export function QuickEdit({ target, onClose }: { target: QuickEditTarget; onClos
       </>
     );
   } else {
-    const names = b.tagIds.map((id) => lib.tags.find((t) => t.id === id)?.name).filter((n): n is string => !!n);
+    const names = b.tagIds.map((id) => allTags.find((t) => t.id === id)?.name).filter((n): n is string => !!n);
     const has = (n: string) => names.some((x) => x.toLowerCase() === n.toLowerCase());
-    const tags = [...lib.tags]
+    const tags = [...allTags]
       .filter((t) => t.name.toLowerCase().includes(ql))
       .sort((x, y) => Number(b.tagIds.includes(y.id)) - Number(b.tagIds.includes(x.id)) || x.name.localeCompare(y.name))
       .slice(0, 60);
-    const exact = lib.tags.some((t) => t.name.toLowerCase() === ql);
+    const exact = allTags.some((t) => t.name.toLowerCase() === ql);
     const toggle = (n: string) => run(() => store.setTags(b.id, has(n) ? names.filter((x) => x.toLowerCase() !== n.toLowerCase()) : [...names, n]));
     body = (
       <>

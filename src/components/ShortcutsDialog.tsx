@@ -1,19 +1,24 @@
 import { Dialog } from './Dialog';
 
 export const SHORTCUTS: { keys: string[]; action: string }[] = [
+  { keys: ['Ctrl', '1'], action: 'YouTube library' },
+  { keys: ['Ctrl', '2'], action: 'Links' },
   { keys: ['Ctrl', 'L'], action: 'Paste a link (focus the add box)' },
   { keys: ['Ctrl', 'Shift', 'N'], action: 'Add many links' },
   { keys: ['Ctrl', 'F'], action: 'Search' },
   { keys: ['/'], action: 'Search' },
-  { keys: ['Ctrl', 'I'], action: 'Import / Export' },
+  { keys: ['Ctrl', 'I'], action: 'Import' },
+  { keys: ['Ctrl', 'E'], action: 'Export' },
   { keys: ['Ctrl', ','], action: 'Settings' },
   { keys: ['Ctrl', 'M'], action: 'Manage categories and tags' },
   { keys: ['Ctrl', 'Shift', 'F'], action: 'Show or hide filters' },
-  { keys: ['Ctrl', 'H'], action: 'Library / History' },
+  { keys: ['Ctrl', 'H'], action: 'Library / History (YouTube)' },
+  { keys: ['Ctrl', 'Shift', 'T'], action: 'Cards / table (Links)' },
+  { keys: ['Ctrl', 'Shift', 'G'], action: 'Group by site on or off (Links)' },
   { keys: ['Ctrl', 'D'], action: 'Light / dark mode' },
   { keys: ['Ctrl', 'Shift', 'C'], action: 'Comfortable / compact cards' },
-  { keys: ['Ctrl', 'A'], action: 'Select all shown bookmarks' },
-  { keys: ['Delete'], action: 'Delete selected bookmarks (with Undo)' },
+  { keys: ['Ctrl', 'A'], action: 'Select everything shown' },
+  { keys: ['Delete'], action: 'Delete the selection (with Undo)' },
   { keys: ['Esc'], action: 'Close a dialog, clear search or selection' },
   { keys: ['?'], action: 'This list' },
 ];

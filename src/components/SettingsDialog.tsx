@@ -9,16 +9,17 @@ interface Props {
   setTheme: (t: ThemePref) => void;
   density: Density;
   setDensity: (d: Density) => void;
-  onFetchMissing: () => void;
+  /** The current library's "fetch missing details" row. */
+  details: { label: string; noun: string; missing: number; canFetch: boolean; fetch: () => void };
 }
 
-export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, onFetchMissing }: Props) {
+export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, details }: Props) {
   const store = useStore();
   useLibrary(); // re-render when the key or library changes
   const [key, setKey] = useState('');
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const missing = store.needsMetadata.length;
+  const { missing, noun } = details;
   const [toTray, setToTray] = usePref<'on' | 'off'>(MINIMIZE_TO_TRAY_PREF, 'on');
 
   const save = async () => {
@@ -87,12 +88,12 @@ export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, 
           {status && <span className={status.ok ? 'ok' : 'error'} style={{ fontSize: 13 }}>{status.text}</span>}
         </div>
         <div className="field">
-          <span>Bookmark details</span>
+          <span>{details.label}</span>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <span className="hint" style={{ flex: 1 }}>
-              {missing ? `${missing} bookmark${missing === 1 ? '' : 's'} still need a title, thumbnail or tags.` : 'All bookmarks have their details.'}
+              {missing ? `${missing} ${noun}${missing === 1 ? '' : 's'} still need a title, picture or tags.` : `All ${noun}s have their details.`}
             </span>
-            <button type="button" className="btn btn-sm" disabled={!missing || !store.hasApiKey} onClick={() => { onFetchMissing(); onClose(); }}>Fetch now</button>
+            <button type="button" className="btn btn-sm" disabled={!missing || !details.canFetch} onClick={() => { details.fetch(); onClose(); }}>Fetch now</button>
           </div>
         </div>
       </div>

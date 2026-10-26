@@ -1,3 +1,4 @@
+import type { Link, LinkLibrary } from './link-types';
 import type { Bookmark, Category, Library, Tag } from './types';
 
 /** Where the library is persisted. The app keeps the whole library in memory and writes through. */
@@ -13,6 +14,19 @@ export interface Storage {
   setSetting(key: string, value: string): Promise<void>;
   /** Removes everything (used by "Replace my library" import). */
   clear(): Promise<void>;
+  /** The link library, kept apart from the YouTube one (its own categories and tags). */
+  links: LinkStorage;
+}
+
+export interface LinkStorage {
+  load(): Promise<LinkLibrary>;
+  saveLinks(links: Link[]): Promise<void>;
+  deleteLinks(ids: string[]): Promise<void>;
+  saveCategories(categories: Category[]): Promise<void>;
+  deleteCategory(id: string): Promise<void>;
+  saveTags(tags: Tag[]): Promise<void>;
+  deleteTags(ids: string[]): Promise<void>;
+  clear(): Promise<void>;
 }
 
 export function isTauri(): boolean {
@@ -20,34 +34,92 @@ export function isTauri(): boolean {
 }
 
 /** In-memory storage, optionally mirrored to localStorage. Used for tests and the browser preview. */
+function upsert<T extends { id: string }>(list: T[], items: T[]): T[] {
+  const byId = new Map(list.map((x) => [x.id, x]));
+  for (const item of items) byId.set(item.id, structuredClone(item));
+  return [...byId.values()];
+}
+
 export class MemoryStorage implements Storage {
   private lib: Library = { bookmarks: [], categories: [], tags: [] };
+  private linkLib: LinkLibrary = { links: [], categories: [], tags: [] };
   private settings: Record<string, string> = {};
+  readonly links: LinkStorage;
 
   constructor(private readonly persistKey?: string) {
     if (persistKey && typeof localStorage !== 'undefined') {
       try {
         const raw = localStorage.getItem(persistKey);
-        if (raw) ({ lib: this.lib, settings: this.settings } = JSON.parse(raw));
+        if (raw) {
+          const saved = JSON.parse(raw);
+          this.lib = saved.lib;
+          this.settings = saved.settings;
+          this.linkLib = saved.linkLib ?? this.linkLib;
+        }
       } catch {
         // Ignore unreadable preview data; start empty.
       }
     }
+    this.links = this.makeLinkStorage();
   }
 
   private persist() {
     if (!this.persistKey || typeof localStorage === 'undefined') return;
     try {
-      localStorage.setItem(this.persistKey, JSON.stringify({ lib: this.lib, settings: this.settings }));
+      localStorage.setItem(this.persistKey, JSON.stringify({ lib: this.lib, settings: this.settings, linkLib: this.linkLib }));
     } catch {
       // Storage full or blocked; the preview keeps working in memory.
     }
   }
 
   private upsert<T extends { id: string }>(list: T[], items: T[]): T[] {
-    const byId = new Map(list.map((x) => [x.id, x]));
-    for (const item of items) byId.set(item.id, structuredClone(item));
-    return [...byId.values()];
+    return upsert(list, items);
+  }
+
+  private makeLinkStorage(): LinkStorage {
+    const self = this;
+    return {
+      async load() {
+        return structuredClone(self.linkLib);
+      },
+      async saveLinks(links) {
+        const keys = new Map(self.linkLib.links.map((l) => [l.dedupeKey, l.id]));
+        for (const l of links) {
+          const owner = keys.get(l.dedupeKey);
+          if (owner && owner !== l.id) throw new Error(`UNIQUE constraint failed: links.dedupe_key (${l.dedupeKey})`);
+        }
+        self.linkLib.links = upsert(self.linkLib.links, links);
+        self.persist();
+      },
+      async deleteLinks(ids) {
+        const drop = new Set(ids);
+        self.linkLib.links = self.linkLib.links.filter((l) => !drop.has(l.id));
+        self.persist();
+      },
+      async saveCategories(categories) {
+        self.linkLib.categories = upsert(self.linkLib.categories, categories);
+        self.persist();
+      },
+      async deleteCategory(id) {
+        self.linkLib.categories = self.linkLib.categories.filter((c) => c.id !== id);
+        self.linkLib.links = self.linkLib.links.map((l) => (l.categoryId === id ? { ...l, categoryId: null } : l));
+        self.persist();
+      },
+      async saveTags(tags) {
+        self.linkLib.tags = upsert(self.linkLib.tags, tags);
+        self.persist();
+      },
+      async deleteTags(ids) {
+        const drop = new Set(ids);
+        self.linkLib.tags = self.linkLib.tags.filter((t) => !drop.has(t.id));
+        self.linkLib.links = self.linkLib.links.map((l) => ({ ...l, tagIds: l.tagIds.filter((t) => !drop.has(t)) }));
+        self.persist();
+      },
+      async clear() {
+        self.linkLib = { links: [], categories: [], tags: [] };
+        self.persist();
+      },
+    };
   }
 
   async load(): Promise<Library> {
@@ -132,7 +204,10 @@ function chunk<T>(xs: T[], size: number): T[][] {
 
 /** SQLite storage through tauri-plugin-sql. The schema lives in src-tauri/migrations. */
 export class SqliteStorage implements Storage {
-  private constructor(private readonly db: SqlDb) {}
+  readonly links: LinkStorage;
+  private constructor(private readonly db: SqlDb) {
+    this.links = new SqliteLinkStorage(db);
+  }
 
   static async open(): Promise<SqliteStorage> {
     const { default: Database } = await import('@tauri-apps/plugin-sql');
@@ -251,5 +326,124 @@ export class SqliteStorage implements Storage {
     await this.db.execute('DELETE FROM bookmarks');
     await this.db.execute('DELETE FROM tags');
     await this.db.execute('DELETE FROM categories');
+  }
+}
+
+const LINK_COLUMNS = [
+  'id', 'url', 'dedupe_key', 'domain', 'title', 'description', 'favicon_url', 'image_url', 'site_name', 'category_id',
+  'notes', 'viewed', 'flags', 'open_count', 'last_opened_at', 'quick_launch', 'created_at', 'updated_at', 'metadata_status',
+] as const;
+
+function linkValues(l: Link): unknown[] {
+  return [
+    l.id, l.url, l.dedupeKey, l.domain, l.title, l.description, l.faviconUrl, l.imageUrl, l.siteName, l.categoryId,
+    l.notes, l.viewed ? 1 : 0, l.flags.join(','), l.openCount, l.lastOpenedAt, l.quickLaunch, l.createdAt, l.updatedAt, l.metadataStatus,
+  ];
+}
+
+/** The link library's tables (migration 0003). */
+class SqliteLinkStorage implements LinkStorage {
+  constructor(private readonly db: SqlDb) {}
+
+  async load(): Promise<LinkLibrary> {
+    const [rows, map, categories, tags] = await Promise.all([
+      this.db.select<Row[]>('SELECT * FROM links'),
+      this.db.select<Row[]>('SELECT link_id, tag_id FROM link_tag_map'),
+      this.db.select<Row[]>('SELECT * FROM link_categories ORDER BY name'),
+      this.db.select<Row[]>('SELECT * FROM link_tags ORDER BY name'),
+    ]);
+    const tagsOf = new Map<string, string[]>();
+    for (const m of map) tagsOf.set(m.link_id, [...(tagsOf.get(m.link_id) ?? []), m.tag_id]);
+    return {
+      links: rows.map((r) => ({
+        id: r.id,
+        url: r.url,
+        dedupeKey: r.dedupe_key,
+        domain: r.domain,
+        title: r.title,
+        description: r.description,
+        faviconUrl: r.favicon_url,
+        imageUrl: r.image_url,
+        siteName: r.site_name,
+        categoryId: r.category_id,
+        tagIds: tagsOf.get(r.id) ?? [],
+        notes: r.notes,
+        viewed: !!r.viewed,
+        flags: r.flags ? r.flags.split(',') : [],
+        openCount: r.open_count,
+        lastOpenedAt: r.last_opened_at,
+        quickLaunch: r.quick_launch,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        metadataStatus: r.metadata_status,
+      })),
+      categories: categories.map((c) => ({ id: c.id, name: c.name, color: c.color, createdAt: c.created_at })),
+      tags: tags.map((t) => ({ id: t.id, name: t.name, createdAt: t.created_at })),
+    };
+  }
+
+  async saveLinks(links: Link[]) {
+    const updates = LINK_COLUMNS.filter((c) => c !== 'id' && c !== 'created_at').map((c) => `${c} = excluded.${c}`).join(', ');
+    // 40 rows × 19 columns stays under SQLite's 999-parameter limit.
+    for (const batch of chunk(links, 40)) {
+      await this.db.execute(
+        `INSERT INTO links (${LINK_COLUMNS.join(', ')}) VALUES ${placeholders(batch.length, LINK_COLUMNS.length)}
+         ON CONFLICT(id) DO UPDATE SET ${updates}`,
+        batch.flatMap(linkValues),
+      );
+      const ids = batch.map((l) => l.id);
+      await this.db.execute(`DELETE FROM link_tag_map WHERE link_id IN (${ids.map((_, i) => `$${i + 1}`).join(', ')})`, ids);
+      const pairs = batch.flatMap((l) => l.tagIds.map((t) => [l.id, t]));
+      for (const part of chunk(pairs, 400)) {
+        await this.db.execute(`INSERT OR IGNORE INTO link_tag_map (link_id, tag_id) VALUES ${placeholders(part.length, 2)}`, part.flat());
+      }
+    }
+  }
+
+  async deleteLinks(ids: string[]) {
+    for (const batch of chunk(ids, 400)) {
+      const ph = batch.map((_, i) => `$${i + 1}`).join(', ');
+      await this.db.execute(`DELETE FROM link_tag_map WHERE link_id IN (${ph})`, batch);
+      await this.db.execute(`DELETE FROM links WHERE id IN (${ph})`, batch);
+    }
+  }
+
+  async saveCategories(categories: Category[]) {
+    for (const c of categories) {
+      await this.db.execute(
+        `INSERT INTO link_categories (id, name, color, created_at) VALUES ($1, $2, $3, $4)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color`,
+        [c.id, c.name, c.color, c.createdAt],
+      );
+    }
+  }
+
+  async deleteCategory(id: string) {
+    await this.db.execute('UPDATE links SET category_id = NULL WHERE category_id = $1', [id]);
+    await this.db.execute('DELETE FROM link_categories WHERE id = $1', [id]);
+  }
+
+  async saveTags(tags: Tag[]) {
+    for (const t of tags) {
+      await this.db.execute(
+        'INSERT INTO link_tags (id, name, created_at) VALUES ($1, $2, $3) ON CONFLICT(id) DO UPDATE SET name = excluded.name',
+        [t.id, t.name, t.createdAt],
+      );
+    }
+  }
+
+  async deleteTags(ids: string[]) {
+    for (const batch of chunk(ids, 400)) {
+      const ph = batch.map((_, i) => `$${i + 1}`).join(', ');
+      await this.db.execute(`DELETE FROM link_tag_map WHERE tag_id IN (${ph})`, batch);
+      await this.db.execute(`DELETE FROM link_tags WHERE id IN (${ph})`, batch);
+    }
+  }
+
+  async clear() {
+    await this.db.execute('DELETE FROM link_tag_map');
+    await this.db.execute('DELETE FROM links');
+    await this.db.execute('DELETE FROM link_tags');
+    await this.db.execute('DELETE FROM link_categories');
   }
 }

@@ -21,3 +21,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Same sqlx the SQL plugin already builds; used to read the old app's database read-only.
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "charset"] }

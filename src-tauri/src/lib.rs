@@ -57,22 +57,21 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
 
 const CHANNEL_VIEW: &str = "channel-view";
 
-fn youtube_url(url: &str) -> Result<tauri::Url, String> {
+fn web_url(url: &str) -> Result<tauri::Url, String> {
     let parsed: tauri::Url = url.parse().map_err(|_| format!("Not a valid link: {url}"))?;
-    let host = parsed.host_str().unwrap_or_default();
-    if parsed.scheme() != "https" || !(host == "youtube.com" || host.ends_with(".youtube.com")) {
-        return Err("Only YouTube pages open inside the app.".into());
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+        return Err("Only web pages (http and https) open inside the app.".into());
     }
     Ok(parsed)
 }
 
-/// Shows a YouTube channel page inside the viewer drawer. YouTube refuses to load in an
-/// iframe, so the page gets its own webview, placed over the drawer's body at the given
+/// Shows a web page (a YouTube channel, or a saved link) inside the viewer drawer. Most sites
+/// refuse to load in an iframe, so the page gets its own webview, placed over the drawer's body at the given
 /// position and size (CSS pixels from the window's top-left). It has no app permissions:
 /// the capabilities file only covers the main webview.
 #[tauri::command]
 async fn show_channel_view(app: tauri::AppHandle, url: String, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
-    let parsed = youtube_url(&url)?;
+    let parsed = web_url(&url)?;
     let (pos, size) = (LogicalPosition::new(x, y), LogicalSize::new(width, height));
     if let Some(view) = app.get_webview(CHANNEL_VIEW) {
         view.navigate(parsed).map_err(|e| e.to_string())?;
@@ -106,6 +105,113 @@ fn close_channel_view(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Back, forward or reload in the drawer's web page.
+#[tauri::command]
+fn channel_view_nav(app: tauri::AppHandle, action: String) -> Result<(), String> {
+    let script = match action.as_str() {
+        "back" => "history.back()",
+        "forward" => "history.forward()",
+        "reload" => "location.reload()",
+        _ => return Err(format!("Unknown action {action}")),
+    };
+    if let Some(view) = app.get_webview(CHANNEL_VIEW) {
+        view.eval(script).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// A saved link's page, fetched once so the app can read its title, description and icons.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FetchedPage {
+    final_url: String,
+    html: String,
+}
+
+/// Only the start of a page is needed: the <head> holds everything the app reads.
+const PAGE_LIMIT: usize = 768 * 1024;
+
+#[tauri::command]
+async fn fetch_page(url: String) -> Result<FetchedPage, String> {
+    let parsed = web_url(&url)?;
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 TubeMarks")
+        .timeout(std::time::Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::limited(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut res = client
+        .get(parsed)
+        .header("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let final_url = res.url().to_string();
+    if !res.status().is_success() {
+        return Err(format!("The site answered {}", res.status()));
+    }
+    let is_html = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map_or(true, |ct| ct.contains("html"));
+    if !is_html {
+        return Ok(FetchedPage { final_url, html: String::new() });
+    }
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(chunk) = res.chunk().await.map_err(|e| e.to_string())? {
+        body.extend_from_slice(&chunk);
+        if body.len() >= PAGE_LIMIT {
+            break;
+        }
+    }
+    Ok(FetchedPage { final_url, html: String::from_utf8_lossy(&body).into_owned() })
+}
+
+/// A browser's own bookmarks file (Chrome, Edge, Brave and other Chromium browsers).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserBookmarks {
+    browser: String,
+    profile: String,
+    path: String,
+}
+
+/// Finds the Chromium bookmark files on this computer so they can be imported without
+/// exporting them first. The files are only read later, never changed.
+#[tauri::command]
+fn browser_bookmark_files() -> Vec<BrowserBookmarks> {
+    let mut roots: Vec<(&str, std::path::PathBuf)> = Vec::new();
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(std::path::PathBuf::from);
+    if let Some(local) = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) {
+        roots.push(("Chrome", local.join("Google/Chrome/User Data")));
+        roots.push(("Edge", local.join("Microsoft/Edge/User Data")));
+        roots.push(("Brave", local.join("BraveSoftware/Brave-Browser/User Data")));
+    }
+    if let Some(home) = home {
+        roots.push(("Chrome", home.join("Library/Application Support/Google/Chrome")));
+        roots.push(("Edge", home.join("Library/Application Support/Microsoft Edge")));
+        roots.push(("Chrome", home.join(".config/google-chrome")));
+        roots.push(("Chromium", home.join(".config/chromium")));
+        roots.push(("Edge", home.join(".config/microsoft-edge")));
+    }
+    let mut out = Vec::new();
+    for (browser, root) in roots {
+        let Ok(entries) = std::fs::read_dir(&root) else { continue };
+        let mut found: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.join("Bookmarks").is_file())
+            .collect();
+        found.sort();
+        for dir in found {
+            let profile = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            out.push(BrowserBookmarks { browser: browser.into(), profile, path: dir.join("Bookmarks").to_string_lossy().into_owned() });
+        }
+    }
+    out
+}
+
 fn migrations() -> Vec<Migration> {
     vec![
     Migration {
@@ -118,6 +224,12 @@ fn migrations() -> Vec<Migration> {
         version: 2,
         description: "add channel link",
         sql: include_str!("../migrations/0002_channel_url.sql"),
+        kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 3,
+        description: "add link bookmarks",
+        sql: include_str!("../migrations/0003_links.sql"),
         kind: MigrationKind::Up,
     }]
 }
@@ -178,7 +290,7 @@ pub fn run() {
                 w.app_handle().exit(0);
             }
         })
-        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, show_channel_view, move_channel_view, close_channel_view])
+        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, show_channel_view, move_channel_view, close_channel_view, channel_view_nav, fetch_page, browser_bookmark_files])
         .run(tauri::generate_context!())
         .expect("error while running TubeMarks");
 }

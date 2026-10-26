@@ -1,5 +1,6 @@
 import { isTauri } from './storage';
 import type { LegacyItem } from './backup';
+import { parsePageMeta, type PageMeta } from './page-meta';
 
 /** Opens a link in the default web browser (never inside the app). */
 export async function openExternal(url: string) {
@@ -96,4 +97,39 @@ export async function moveChannelView(rect: ViewRect) {
 export async function closeChannelView() {
   const { invoke } = await import('@tauri-apps/api/core');
   await invoke('close_channel_view');
+}
+
+/** Back, forward or reload in the page shown by showChannelView. */
+export async function webViewNav(action: 'back' | 'forward' | 'reload') {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('channel_view_nav', { action });
+}
+
+/**
+ * Downloads a page and reads its title, description, image and icon. The desktop app fetches it
+ * itself (pages can't be read across sites from the window); the browser preview has no way to.
+ */
+export async function fetchPageMeta(url: string): Promise<PageMeta & { finalUrl: string }> {
+  if (!isTauri()) throw new Error('Page details are fetched in the desktop app only.');
+  const { invoke } = await import('@tauri-apps/api/core');
+  const page = await invoke<{ finalUrl: string; html: string }>('fetch_page', { url });
+  return { ...parsePageMeta(page.html, page.finalUrl), finalUrl: page.finalUrl };
+}
+
+export interface BrowserBookmarkFile {
+  browser: string;
+  profile: string;
+  path: string;
+}
+
+/** Chrome, Edge and Brave profiles on this computer that have bookmarks (desktop app only). */
+export async function browserBookmarkFiles(): Promise<BrowserBookmarkFile[]> {
+  if (!isTauri()) return [];
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<BrowserBookmarkFile[]>('browser_bookmark_files');
+}
+
+export async function readTextFile(path: string): Promise<string> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<string>('read_text_file', { path });
 }

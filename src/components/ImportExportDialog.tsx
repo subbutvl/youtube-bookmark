@@ -12,7 +12,7 @@ const FORMATS: { id: ExportFormat; name: string; desc: string; ext: string }[] =
   { id: 'txt', name: 'Links only (.txt)', desc: 'One URL per line, for sharing or another app.', ext: 'txt' },
 ];
 
-export function ImportExportDialog({ onClose, onImported }: { onClose: () => void; onImported: (added: number) => void }) {
+export function ImportExportDialog({ onClose, onImported, only }: { onClose: () => void; onImported: (added: number) => void; only?: 'import' | 'export' }) {
   const store = useStore();
   const lib = useLibrary();
   const toast = useToast();
@@ -73,7 +73,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
 
   return (
     <Dialog
-      title="Import and export"
+      title={only === 'export' ? 'Export YouTube bookmarks' : only === 'import' ? 'Import YouTube bookmarks' : 'Import and export'}
       onClose={onClose}
       footer={
         <>
@@ -89,7 +89,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
       }
     >
       <div className="dialog-body" style={{ gap: 22 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {only !== 'import' && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 15 }}>Export</h3>
           {FORMATS.map((f) => (
             <button type="button" className="option-btn" key={f.id} onClick={() => doExport(f)} disabled={!lib.bookmarks.length}>
@@ -100,8 +100,8 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
               </span>
             </button>
           ))}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        </div>}
+        {only !== 'export' && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 15 }}>Import</h3>
           <div className="dropzone">
             <IconUpload size={22} />
@@ -139,7 +139,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
               )}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </Dialog>
   );

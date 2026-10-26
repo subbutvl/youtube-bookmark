@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { LibraryStore } from './lib/library';
+import { LinkStore } from './lib/link-store';
+import { fetchPageMeta } from './lib/platform';
 import { isTauri, MemoryStorage, SqliteStorage } from './lib/storage';
 import { StoreProvider, ToastProvider } from './state';
 import './styles.css';
@@ -12,10 +14,11 @@ async function start() {
     // In the desktop app the library lives in SQLite; in a plain browser (npm run dev) it's a local preview.
     const storage = isTauri() ? await SqliteStorage.open() : new MemoryStorage('tubemarks-preview');
     const store = new LibraryStore(storage, undefined, import.meta.env.VITE_YOUTUBE_API_KEY ?? '');
-    await store.init();
+    const linkStore = new LinkStore(storage.links, fetchPageMeta);
+    await Promise.all([store.init(), linkStore.init()]);
     root.render(
       <StrictMode>
-        <StoreProvider store={store}>
+        <StoreProvider store={store} linkStore={linkStore}>
           <ToastProvider>
             <App />
           </ToastProvider>

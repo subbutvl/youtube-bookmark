@@ -51,7 +51,7 @@ export function exportJson(lib: Library, now = new Date()): string {
   );
 }
 
-function csvCell(v: unknown): string {
+export function csvCell(v: unknown): string {
   const s = v == null ? '' : String(v);
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
