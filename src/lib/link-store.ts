@@ -385,7 +385,9 @@ export class LinkStore {
         const next = await this.applyMeta(l, force);
         this.fetching.delete(l.id);
         if (this.lib.links.some((x) => x.id === l!.id)) await this.save([next]);
-        onProgress?.(++done, total);
+        // Count outside the call: `onProgress?.(++done)` skips the increment when there's no callback.
+        done++;
+        onProgress?.(done, total);
         if (bulk) this.progress = { done, total };
       }
     };

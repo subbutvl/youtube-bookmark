@@ -92,6 +92,19 @@ describe('LinkStore', () => {
     expect(again.duplicates[0].existing.id).toBe(one.id);
   });
 
+  it('counts bulk progress even without a progress callback', async () => {
+    const { store } = await makeStore();
+    // Imported links don't start a fetch of their own, unlike addUrls.
+    // More links than fetch workers, so later fetches report the earlier ones as done.
+    await store.importItems(Array.from({ length: 10 }, (_, n) => parseLink(`https://a.com/${n}`)!), 'merge');
+    const seen: number[] = [];
+    const stop = store.subscribe(() => store.progress && seen.push(store.progress.done));
+    await store.refreshMetadata(store.getSnapshot().links.map((l) => l.id));
+    stop();
+    expect(Math.max(...seen)).toBeGreaterThan(0);
+    expect(store.progress).toBeNull();
+  });
+
   it('opening marks viewed and clears New; flags combine', async () => {
     const { store } = await makeStore();
     const [l] = (await store.addUrls('x.com/a')).added;
