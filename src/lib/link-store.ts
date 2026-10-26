@@ -1,4 +1,4 @@
-import { LINK_FLAGS, QUICK_LAUNCH_MAX, type Link, type LinkFlag, type LinkLibrary } from './link-types';
+import { LINK_FLAGS, QUICK_LAUNCH_MAX, sectionFor, type Link, type LinkFlag, type LinkLibrary, type LinkSection } from './link-types';
 import { fallbackFavicon, parseLink } from './link-url';
 import type { PageMeta } from './page-meta';
 import type { LinkStorage } from './storage';
@@ -33,6 +33,9 @@ export interface LinkImportItem {
   lastOpenedAt?: string | null;
   quickLaunch?: number | null;
   createdAt?: string;
+  groupName?: string | null;
+  /** Tags an earlier import made from this link's folders; removed when the folders are re-applied as categories. */
+  folderTags?: string[];
 }
 
 const uid = () => crypto.randomUUID();
@@ -234,6 +237,8 @@ export class LinkStore {
         createdAt: t,
         updatedAt: t,
         metadataStatus: 'pending',
+        section: sectionFor(p.domain),
+        groupName: null,
       });
     }
     result.added = [...batch.values()];
@@ -254,7 +259,7 @@ export class LinkStore {
       if (!p) throw new Error('That isn’t a valid web link.');
       const other = this.findByKey(p.dedupeKey);
       if (other && other.id !== id) throw new Error('Another saved link already points to that page.');
-      patch = { ...patch, url: p.url, dedupeKey: p.dedupeKey, domain: p.domain };
+      patch = { ...patch, url: p.url, dedupeKey: p.dedupeKey, domain: p.domain, section: patch.section ?? (p.domain === l.domain ? l.section : sectionFor(p.domain)) };
     }
     const tagIds = tagNames ? (await this.ensureTags(tagNames)).map((t) => t.id) : patch.tagIds ?? l.tagIds;
     await this.save([{ ...l, ...patch, tagIds, updatedAt: now() }]);
@@ -313,31 +318,50 @@ export class LinkStore {
     this.emit();
   }
 
-  // ----- quick launch -----
+  // ----- manual groups and tabs -----
 
-  get quickLaunch(): Link[] {
-    return this.lib.links.filter((l) => l.quickLaunch != null).sort((a, b) => a.quickLaunch! - b.quickLaunch!);
+  /** Puts links in a group of the user's own (null takes them out). */
+  async setGroup(ids: string[], name: string | null) {
+    const groupName = name?.trim() || null;
+    await this.save(this.change(ids, (l) => (l.groupName === groupName ? null : { ...l, groupName })));
+  }
+
+  async renameGroup(section: LinkSection, from: string, to: string) {
+    const ids = this.lib.links.filter((l) => l.section === section && l.groupName === from).map((l) => l.id);
+    await this.setGroup(ids, to);
+  }
+
+  /** Group names in use in a tab, A to Z. */
+  groupNames(section: LinkSection): string[] {
+    return [...new Set(this.lib.links.flatMap((l) => (l.section === section && l.groupName ? [l.groupName] : [])))].sort((a, b) => a.localeCompare(b));
+  }
+
+  async moveToSection(ids: string[], section: LinkSection) {
+    await this.save(this.change(ids, (l) => (l.section === section ? null : { ...l, section, quickLaunch: null })));
+  }
+
+  // ----- quick launch (each tab has its own) -----
+
+  quickLaunchFor(section: LinkSection): Link[] {
+    return this.lib.links.filter((l) => l.section === section && l.quickLaunch != null).sort((a, b) => a.quickLaunch! - b.quickLaunch!);
   }
 
   async pin(id: string) {
-    const pinned = this.quickLaunch;
-    if (pinned.some((l) => l.id === id)) return;
+    const l = this.lib.links.find((x) => x.id === id);
+    if (!l || l.quickLaunch != null) return;
+    const pinned = this.quickLaunchFor(l.section);
     if (pinned.length >= QUICK_LAUNCH_MAX) throw new Error(`Quick launch holds up to ${QUICK_LAUNCH_MAX} links. Unpin one first.`);
-    await this.save(this.change([id], (l) => ({ ...l, quickLaunch: pinned.length })));
+    await this.save(this.change([id], (x) => ({ ...x, quickLaunch: pinned.length ? pinned[pinned.length - 1].quickLaunch! + 1 : 0 })));
   }
 
   async unpin(id: string) {
-    await this.reorderQuickLaunch(this.quickLaunch.map((l) => l.id).filter((x) => x !== id), [id]);
+    await this.save(this.change([id], (l) => (l.quickLaunch == null ? null : { ...l, quickLaunch: null })));
   }
 
-  /** Saves the quick launch order; `removed` links are unpinned. */
-  async reorderQuickLaunch(orderedIds: string[], removed: string[] = []) {
+  /** Saves the quick launch order of one tab's pinned links. */
+  async reorderQuickLaunch(orderedIds: string[]) {
     const pos = new Map(orderedIds.map((id, i) => [id, i]));
-    const changed = this.lib.links.flatMap((l) => {
-      const next = removed.includes(l.id) ? null : pos.get(l.id) ?? l.quickLaunch;
-      return next === l.quickLaunch ? [] : [{ ...l, quickLaunch: next, updatedAt: now() }];
-    });
-    await this.save(changed);
+    await this.save(this.change(orderedIds, (l) => (pos.get(l.id) === l.quickLaunch ? null : { ...l, quickLaunch: pos.get(l.id)! })));
   }
 
   // ----- details from the page -----
@@ -349,7 +373,8 @@ export class LinkStore {
   private async applyMeta(l: Link, force: boolean): Promise<Link> {
     try {
       const m = await this.fetchMeta(l.url);
-      const fetchedTags = m.keywords.length && !l.tagIds.length ? (await this.ensureTags(m.keywords)).map((t) => t.id) : [];
+      // A page's keywords become tags only for links not yet sorted (no category, no tags).
+      const fetchedTags = m.keywords.length && !l.tagIds.length && !l.categoryId ? (await this.ensureTags(m.keywords)).map((t) => t.id) : [];
       const current = this.lib.links.find((x) => x.id === l.id) ?? l;
       return {
         ...current,
@@ -409,21 +434,40 @@ export class LinkStore {
     return { added: items.length - duplicates, duplicates };
   }
 
-  async importItems(items: LinkImportItem[], mode: 'merge' | 'replace') {
+  /**
+   * Adds the items that aren't saved yet. With `reapplyFolders`, links already saved also take
+   * the file's folder as their category, and the tags an earlier import made from folders go.
+   */
+  async importItems(items: LinkImportItem[], mode: 'merge' | 'replace', opts: { reapplyFolders?: boolean } = {}) {
     if (mode === 'replace') {
       await this.storage.clear();
       this.lib = { links: [], categories: [], tags: [] };
     }
     const fresh: Link[] = [];
+    const updated: Link[] = [];
     let duplicates = 0;
-    let nextPin = this.quickLaunch.length;
+    const pinFor = (section: LinkSection) => {
+      const pinned = [...this.quickLaunchFor(section), ...fresh.filter((l) => l.section === section && l.quickLaunch != null)];
+      return pinned.length >= QUICK_LAUNCH_MAX ? null : pinned.reduce((n, l) => Math.max(n, l.quickLaunch! + 1), 0);
+    };
+    const folderTagNames = new Set<string>();
+    const topFolders = new Set<string>();
     for (const it of items) {
       const existing = this.findByKey(it.dedupeKey) ?? fresh.find((l) => l.dedupeKey === it.dedupeKey);
       if (existing) {
         duplicates++;
+        if (opts.reapplyFolders && !fresh.includes(existing) && !updated.some((l) => l.id === existing.id)) {
+          const drop = new Set((it.folderTags ?? []).map((n) => n.toLowerCase()));
+          it.folderTags?.forEach((n) => folderTagNames.add(n.toLowerCase()));
+          if (it.categoryName) topFolders.add(it.categoryName.split(' / ')[0].toLowerCase());
+          const categoryId = it.categoryName ? (await this.ensureCategory(it.categoryName)).id : existing.categoryId;
+          const tagIds = existing.tagIds.filter((id) => !drop.has(this.lib.tags.find((t) => t.id === id)?.name.toLowerCase() ?? ''));
+          if (categoryId !== existing.categoryId || tagIds.length !== existing.tagIds.length) updated.push({ ...existing, categoryId, tagIds, updatedAt: now() });
+        }
         continue;
       }
       const t = it.createdAt ?? now();
+      const section = sectionFor(it.domain);
       fresh.push({
         id: uid(),
         url: it.url,
@@ -441,16 +485,40 @@ export class LinkStore {
         flags: (it.flags ?? []).filter((f) => LINK_FLAGS.includes(f)),
         openCount: it.openCount ?? 0,
         lastOpenedAt: it.lastOpenedAt ?? null,
-        quickLaunch: it.quickLaunch != null && nextPin < QUICK_LAUNCH_MAX ? nextPin++ : null,
+        quickLaunch: it.quickLaunch != null ? pinFor(section) : null,
         createdAt: t,
         updatedAt: t,
         // Imported titles are kept, but every link still gets its page details (description, image, icon).
         metadataStatus: 'pending',
+        section,
+        groupName: it.groupName?.trim() || null,
       });
     }
-    await this.storage.saveLinks(fresh);
-    this.lib.links = [...this.lib.links, ...fresh];
+    await this.storage.saveLinks([...fresh, ...updated]);
+    this.lib.links = [...this.replaceAll(updated), ...fresh];
+    if (updated.length) await this.dropUnused(folderTagNames, topFolders);
     this.emit();
-    return { added: fresh.length, duplicates };
+    return { added: fresh.length, duplicates, updated: updated.length };
+  }
+
+  private replaceAll(changed: Link[]): Link[] {
+    const byId = new Map(changed.map((l) => [l.id, l]));
+    return this.lib.links.map((l) => byId.get(l.id) ?? l);
+  }
+
+  /** Removes the folder tags and old top-level categories that no link uses any more. */
+  private async dropUnused(tagNames: Set<string>, categoryNames: Set<string>) {
+    const usedTags = new Set(this.lib.links.flatMap((l) => l.tagIds));
+    const tags = this.lib.tags.filter((t) => tagNames.has(t.name.toLowerCase()) && !usedTags.has(t.id)).map((t) => t.id);
+    if (tags.length) {
+      await this.storage.deleteTags(tags);
+      const drop = new Set(tags);
+      this.lib.tags = this.lib.tags.filter((t) => !drop.has(t.id));
+    }
+    const usedCats = new Set(this.lib.links.map((l) => l.categoryId));
+    for (const c of this.lib.categories.filter((c) => categoryNames.has(c.name.toLowerCase()) && !usedCats.has(c.id))) {
+      await this.storage.deleteCategory(c.id);
+      this.lib.categories = this.lib.categories.filter((x) => x.id !== c.id);
+    }
   }
 }

@@ -5,6 +5,19 @@ export type LinkFlag = 'trending' | 'later' | 'must';
 export const LINK_FLAGS: LinkFlag[] = ['trending', 'later', 'must'];
 export const FLAG_LABELS: Record<LinkFlag, string> = { trending: 'Trending', later: 'Later', must: 'Must' };
 
+/** The tabs that hold web links. Each link belongs to one, decided by its site when saved. */
+export type LinkSection = 'links' | 'git' | 'wiki';
+export const SECTION_LABELS: Record<LinkSection, string> = { links: 'Links', git: 'Git', wiki: 'Wikipedia' };
+
+const GIT_HOSTS = new Set(['github.com', 'gist.github.com', 'gitlab.com', 'bitbucket.org', 'codeberg.org', 'sourceforge.net', 'git.sr.ht']);
+
+/** Which tab a link from this site belongs in. */
+export function sectionFor(domain: string): LinkSection {
+  if (GIT_HOSTS.has(domain)) return 'git';
+  if (domain === 'wikipedia.org' || domain.endsWith('.wikipedia.org')) return 'wiki';
+  return 'links';
+}
+
 /** Most links pinned to the quick launch bar. */
 export const QUICK_LAUNCH_MAX = 15;
 
@@ -34,6 +47,9 @@ export interface Link {
   createdAt: string;
   updatedAt: string;
   metadataStatus: MetadataStatus;
+  section: LinkSection;
+  /** A group the user made by hand, shown like a site group; null when not grouped. */
+  groupName: string | null;
 }
 
 export interface LinkLibrary {

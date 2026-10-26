@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { QUICK_LAUNCH_MAX, type Link } from '../lib/link-types';
+import { QUICK_LAUNCH_MAX, type Link, type LinkSection } from '../lib/link-types';
 import { linkTitle } from '../lib/link-view';
 import { fold } from '../lib/view';
 import { errorText, useLinks, useLinkStore, useToast } from '../state';
@@ -7,11 +7,11 @@ import { IconClose, IconPlus } from './Icons';
 import { SiteIcon } from './LinkCard';
 
 /** The pinned links as a row of icons: click to open, drag to reorder, × to unpin. */
-export function QuickLaunch({ onOpen }: { onOpen: (l: Link) => void }) {
+export function QuickLaunch({ section, onOpen }: { section: LinkSection; onOpen: (l: Link) => void }) {
   const store = useLinkStore();
   useLinks(); // re-render when pins change
   const toast = useToast();
-  const pinned = store.quickLaunch;
+  const pinned = store.quickLaunchFor(section);
   const [order, setOrder] = useState<string[] | null>(null);
   const [picking, setPicking] = useState(false);
   const dragging = useRef<string | null>(null);
@@ -62,14 +62,14 @@ export function QuickLaunch({ onOpen }: { onOpen: (l: Link) => void }) {
       {pinned.length < QUICK_LAUNCH_MAX && (
         <div className="ql-add-wrap">
           <button type="button" className="ql-add" aria-label="Pin a link" title="Pin a link" aria-expanded={picking} onClick={() => setPicking((p) => !p)}><IconPlus size={16} /></button>
-          {picking && <PinPicker onClose={() => setPicking(false)} />}
+          {picking && <PinPicker section={section} onClose={() => setPicking(false)} />}
         </div>
       )}
     </section>
   );
 }
 
-function PinPicker({ onClose }: { onClose: () => void }) {
+function PinPicker({ section, onClose }: { section: LinkSection; onClose: () => void }) {
   const store = useLinkStore();
   const lib = useLinks();
   const toast = useToast();
@@ -82,7 +82,7 @@ function PinPicker({ onClose }: { onClose: () => void }) {
   }, [onClose]);
   const words = fold(q).split(/\s+/).filter(Boolean);
   const matches = lib.links
-    .filter((l) => l.quickLaunch == null && words.every((w) => fold(`${l.title} ${l.url}`).includes(w)))
+    .filter((l) => l.section === section && l.quickLaunch == null && words.every((w) => fold(`${l.title} ${l.url}`).includes(w)))
     .sort((a, b) => b.openCount - a.openCount || b.createdAt.localeCompare(a.createdAt))
     .slice(0, 8);
   const pin = (l: Link) => void store.pin(l.id).then(onClose, (e) => toast({ text: errorText(e) }));

@@ -1,17 +1,32 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { LibraryStore } from './lib/library';
 import type { LinkStore } from './lib/link-store';
+import type { RssStore } from './lib/rss-store';
 import type { Category, Tag } from './lib/types';
 
 const StoreContext = createContext<LibraryStore | null>(null);
 const LinkStoreContext = createContext<LinkStore | null>(null);
+const RssStoreContext = createContext<RssStore | null>(null);
 
-export function StoreProvider({ store, linkStore, children }: { store: LibraryStore; linkStore: LinkStore; children: ReactNode }) {
+export function StoreProvider({ store, linkStore, rssStore, children }: { store: LibraryStore; linkStore: LinkStore; rssStore: RssStore; children: ReactNode }) {
   return (
     <StoreContext.Provider value={store}>
-      <LinkStoreContext.Provider value={linkStore}>{children}</LinkStoreContext.Provider>
+      <LinkStoreContext.Provider value={linkStore}>
+        <RssStoreContext.Provider value={rssStore}>{children}</RssStoreContext.Provider>
+      </LinkStoreContext.Provider>
     </StoreContext.Provider>
   );
+}
+
+export function useRssStore(): RssStore {
+  const s = useContext(RssStoreContext);
+  if (!s) throw new Error('useRssStore outside StoreProvider');
+  return s;
+}
+
+export function useRss() {
+  const store = useRssStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
 export function useLinkStore(): LinkStore {
@@ -36,7 +51,15 @@ export function useLibrary() {
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
-export type Mode = 'youtube' | 'links';
+export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | 'media';
+export const MODES: { id: Mode; label: string }[] = [
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'links', label: 'Links' },
+  { id: 'git', label: 'Git' },
+  { id: 'wiki', label: 'Wikipedia' },
+  { id: 'rss', label: 'RSS' },
+  { id: 'media', label: 'Movies & TV' },
+];
 
 /** What the app shell hands each library view. */
 export interface Shell {
@@ -76,7 +99,7 @@ export function useTaxonomy(mode: Mode): Taxonomy {
   const lib = useLibrary();
   const linkStore = useLinkStore();
   const links = useLinks();
-  return mode === 'links'
+  return mode !== 'youtube'
     ? { ops: linkStore, items: links.links, categories: links.categories, tags: links.tags, noun: 'link' }
     : { ops: store, items: lib.bookmarks, categories: lib.categories, tags: lib.tags, noun: 'bookmark' };
 }

@@ -14,6 +14,8 @@ export interface ParsedLinkImport {
   invalid: number;
   /** Entries repeated inside the file itself (kept once). */
   repeated: number;
+  /** The file had folders (a browser's bookmarks), so they can be re-applied to links already saved. */
+  hasFolders?: boolean;
 }
 
 export type LinkExportFormat = 'json' | 'html' | 'csv';
@@ -76,11 +78,16 @@ function finish(raws: RawLink[]): ParsedLinkImport {
   let invalid = 0;
   let repeated = 0;
   for (const r of raws) {
-    const [category, ...sub] = r.folders?.map((f) => f.trim()).filter(Boolean) ?? [];
+    // Each folder becomes a category named by its full path ("AI / Coding"), since the same
+    // folder name can sit under different parents.
+    const folders = r.folders?.map((f) => f.trim()).filter(Boolean) ?? [];
+    const category = folders.length ? folders.join(' / ') : undefined;
+    // What an earlier version made of nested folders, so re-applying folders can tidy them away.
+    const folderTags = folders.slice(1).map(tagName);
     const yt = parseYouTubeUrl(r.url);
     if (yt) {
       if (youtube.has(yt.dedupeKey)) repeated++;
-      else youtube.set(yt.dedupeKey, { url: yt.url, type: yt.type, youtubeId: yt.youtubeId, dedupeKey: yt.dedupeKey, title: r.title, categoryName: category ?? null, tagNames: sub.map(tagName), createdAt: r.createdAt });
+      else youtube.set(yt.dedupeKey, { url: yt.url, type: yt.type, youtubeId: yt.youtubeId, dedupeKey: yt.dedupeKey, title: r.title, categoryName: category ?? null, tagNames: [], createdAt: r.createdAt });
       continue;
     }
     const p = parseLink(r.url);
@@ -92,9 +99,9 @@ function finish(raws: RawLink[]): ParsedLinkImport {
       repeated++;
       continue;
     }
-    links.set(p.dedupeKey, { ...p, title: r.title || undefined, categoryName: category, tagNames: sub.map(tagName), createdAt: r.createdAt, ...r.extra });
+    links.set(p.dedupeKey, { ...p, title: r.title || undefined, categoryName: category, tagNames: [], folderTags, createdAt: r.createdAt, ...r.extra });
   }
-  return { items: [...links.values()], youtube: [...youtube.values()], invalid, repeated };
+  return { items: [...links.values()], youtube: [...youtube.values()], invalid, repeated, hasFolders: raws.some((r) => !!r.folders?.length) };
 }
 
 function validDate(s: unknown): string | undefined {
@@ -142,7 +149,7 @@ export function parseBookmarksHtml(html: string): ParsedLinkImport {
         title: decodeEntities(text),
         folders,
         createdAt: added > 0 ? new Date(added * 1000).toISOString() : undefined,
-        extra: tags ? { tagNames: [...folders.slice(1).map(tagName), ...decodeEntities(tags).split(',').map(tagName).filter(Boolean)] } : undefined,
+        extra: tags ? { tagNames: decodeEntities(tags).split(',').map(tagName).filter(Boolean) } : undefined,
       });
     }
   }
@@ -202,6 +209,7 @@ export function parseLinksBackup(text: string): ParsedLinkImport {
         openCount: l.openCount ?? 0,
         lastOpenedAt: l.lastOpenedAt ?? null,
         quickLaunch: l.quickLaunch ?? null,
+        groupName: l.groupName ?? null,
       },
     })),
   );

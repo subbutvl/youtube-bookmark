@@ -9,7 +9,7 @@ import { LinkBadges, SiteIcon } from './LinkCard';
 interface Props {
   rows: LinkRow[];
   expanded: Set<string>;
-  onToggleGroup: (domain: string) => void;
+  onToggleGroup: (key: string) => void;
   catById: Map<string, Category>;
   tagById: Map<string, Tag>;
   selected: Set<string>;
@@ -32,22 +32,24 @@ export function LinkTable(p: Props) {
   const all = p.rows.flatMap((r) => (r.kind === 'group' ? r.links : [r.link]));
   const allSelected = all.length > 0 && all.every((l) => p.selected.has(l.id));
 
-  const row = (l: Link, child = false) => {
+  const row = (l: Link, child = false, manual = false) => {
     const cat = l.categoryId ? p.catById.get(l.categoryId) : undefined;
     const tags = l.tagIds.map((t) => p.tagById.get(t)).filter((t): t is Tag => !!t);
     const title = linkTitle(l);
     return (
-      <tr key={l.id} data-id={l.id} className={`${child ? 'child ' : ''}${p.selected.has(l.id) ? 'selected ' : ''}${p.flashId === l.id ? 'flash' : ''}`}>
+      <tr key={l.id} data-id={l.id} className={`${child ? `child${manual ? ' manual' : ''} ` : ''}${p.selected.has(l.id) ? 'selected ' : ''}${p.flashId === l.id ? 'flash' : ''}`}>
         <td className="c-check"><input type="checkbox" aria-label={`Select ${title}`} checked={p.selected.has(l.id)} onChange={() => p.onSelect(l.id)} /></td>
         <td className="c-title">
-          <SiteIcon link={l} size={18} />
-          <span className="t-text">
-            <button type="button" className="t-link" title={title} onClick={() => p.onOpen(l)}>{title}</button>
-            <span className="hint t-url" title={l.url}>{l.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
-          </span>
+          <div className="t-cell">
+            <SiteIcon link={l} size={18} />
+            <span className="t-text">
+              <button type="button" className="t-link" title={title} onClick={() => p.onOpen(l)}>{title}</button>
+              <span className="hint t-url" title={l.url}>{l.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
+            </span>
+          </div>
         </td>
-        <td>
-          <button type="button" className={`cat-pill${cat ? '' : ' unset'}`} onClick={(e) => p.onQuickEdit(l.id, 'category', e.currentTarget)}>
+        <td className="c-cat">
+          <button type="button" className={`cat-pill${cat ? '' : ' unset'}`} title={cat?.name} onClick={(e) => p.onQuickEdit(l.id, 'category', e.currentTarget)}>
             {cat && <span className="swatch" style={{ background: cat.color }} />}{cat?.name ?? 'Category'}
           </button>
         </td>
@@ -55,8 +57,8 @@ export function LinkTable(p: Props) {
           {tags.slice(0, 2).map((t) => <button type="button" key={t.id} className="tag-pill" onClick={() => p.onTagClick(t.id)}>#{t.name}</button>)}
           <button type="button" className="tag-add" onClick={(e) => p.onQuickEdit(l.id, 'tags', e.currentTarget)}>{tags.length > 2 ? `+${tags.length - 2}` : '+'}</button>
         </td>
-        <td className="c-status"><LinkBadges l={{ ...l, flags: [] }} /></td>
         <td className="c-flags">
+          <LinkBadges l={{ ...l, flags: [] }} />
           {LINK_FLAGS.map((f) => (
             <button type="button" key={f} className={`flag-btn ${f}`} aria-pressed={l.flags.includes(f)} onClick={() => p.onToggleFlag(l, f)}>{FLAG_LABELS[f]}</button>
           ))}
@@ -80,37 +82,41 @@ export function LinkTable(p: Props) {
         <thead>
           <tr>
             <th className="c-check"><input type="checkbox" aria-label="Select all shown" checked={allSelected} onChange={() => p.onSelectMany(all.map((l) => l.id), !allSelected)} /></th>
-            <th>Title</th>
-            <th>Category</th>
-            <th>Tags</th>
-            <th>Status</th>
-            <th>Flags</th>
+            <th className="c-title">Title</th>
+            <th className="c-cat">Category</th>
+            <th className="c-tags">Tags</th>
+            <th className="c-flags">Status and flags</th>
             <th className="c-num">Opened</th>
-            <th>Added</th>
-            <th><span className="sr-only">Actions</span></th>
+            <th className="c-date">Added</th>
+            <th className="c-actions"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {p.rows.map((r) => {
             if (r.kind === 'link') return row(r.link);
-            const open = p.expanded.has(r.domain);
+            const open = p.expanded.has(r.key);
             return (
-              <Fragment key={`g:${r.domain}`}>
-                <tr className="group-row">
+              <Fragment key={r.key}>
+                <tr className={`group-row${r.manual ? ' manual' : ''}`}>
                   <td className="c-check">
-                    <input type="checkbox" aria-label={`Select all ${r.links.length} from ${r.domain}`} checked={r.links.every((l) => p.selected.has(l.id))} onChange={(e) => p.onSelectMany(r.links.map((l) => l.id), e.target.checked)} />
+                    <input type="checkbox" aria-label={`Select all ${r.links.length} in ${r.label}`} checked={r.links.every((l) => p.selected.has(l.id))} onChange={(e) => p.onSelectMany(r.links.map((l) => l.id), e.target.checked)} />
                   </td>
-                  <td colSpan={8}>
-                    <button type="button" className="group-toggle" aria-expanded={open} onClick={() => p.onToggleGroup(r.domain)}>
+                  <td colSpan={2} className="c-group">
+                    <button type="button" className="group-toggle" aria-expanded={open} onClick={() => p.onToggleGroup(r.key)}>
                       <IconChevronDown size={16} className={open ? '' : 'rot'} />
                       <SiteIcon link={r.links[0]} size={18} />
-                      <b>{r.domain}</b>
+                      <b>{r.label}</b>
                       <span className="count">{r.links.length} links</span>
                       {!open && <span className="hint group-peek">{r.links.slice(0, 3).map(linkTitle).join(' · ')}</span>}
                     </button>
                   </td>
+                  <td className="c-tags" />
+                  <td className="c-flags" />
+                  <td className="c-num" />
+                  <td className="c-date" />
+                  <td className="c-actions" />
                 </tr>
-                {open && r.links.map((l) => row(l, true))}
+                {open && r.links.map((l) => row(l, true, r.manual))}
               </Fragment>
             );
           })}

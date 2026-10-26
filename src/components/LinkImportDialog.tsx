@@ -20,6 +20,7 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
   const toast = useToast();
   const [file, setFile] = useState<{ name: string; parsed: ParsedLinkImport } | null>(null);
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
+  const [reapply, setReapply] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [browsers, setBrowsers] = useState<BrowserBookmarkFile[]>([]);
@@ -61,12 +62,13 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
     if (!file) return;
     setBusy(true);
     try {
-      const r = await store.importItems(file.parsed.items, mode);
+      const r = await store.importItems(file.parsed.items, mode, { reapplyFolders: mode === 'merge' && reapply && file.parsed.hasFolders });
       const yr = file.parsed.youtube.length ? await ytStore.importItems(file.parsed.youtube, 'merge') : { added: 0, duplicates: 0 };
       const parts = [`Imported ${r.added.toLocaleString()} link${r.added === 1 ? '' : 's'}`];
       if (yr.added) parts.push(`${yr.added.toLocaleString()} YouTube bookmark${yr.added === 1 ? '' : 's'}`);
       const skipped = r.duplicates + yr.duplicates + file.parsed.repeated;
-      toast({ text: `${parts.join(' and ')}${skipped ? `. Skipped ${skipped.toLocaleString()} duplicates` : ''}.` }, 8000);
+      if (r.updated) parts.push(`moved ${r.updated.toLocaleString()} saved link${r.updated === 1 ? '' : 's'} into their folders`);
+      toast({ text: `${parts.join(', ')}${skipped ? `. Skipped ${skipped.toLocaleString()} duplicates` : ''}.` }, 10000);
       onImported(r.added, yr.added);
       onClose();
     } catch (e) {
@@ -75,7 +77,8 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
     }
   };
 
-  const total = (preview?.added ?? 0) + (ytPreview?.added ?? 0);
+  const canReapply = mode === 'merge' && !!file?.parsed.hasFolders && (preview?.duplicates ?? 0) > 0;
+  const total = (preview?.added ?? 0) + (ytPreview?.added ?? 0) + (canReapply && reapply ? preview!.duplicates : 0);
 
   return (
     <Dialog
@@ -88,7 +91,7 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
           <button type="button" className="btn" onClick={onClose}>{file ? 'Cancel' : 'Close'}</button>
           {file && (
             <button type="button" className="btn btn-primary" disabled={busy || !total} onClick={doImport}>
-              {busy ? 'Importing…' : `Import ${total.toLocaleString()}`}
+              {busy ? 'Importing…' : canReapply && reapply && !(preview?.added || ytPreview?.added) ? 'Update folders' : `Import ${((preview?.added ?? 0) + (ytPreview?.added ?? 0)).toLocaleString()}`}
             </button>
           )}
         </>
@@ -103,7 +106,7 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
                 <IconUpload size={18} />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontWeight: 600 }}>{b.browser} · {b.profile}</span>
-                  <span className="hint">Folders become categories (top level) and tags (inside). The browser’s bookmarks are only read, never changed.</span>
+                  <span className="hint">Each folder becomes a category, named by its path (for example “AI / Coding”). The browser’s bookmarks are only read, never changed.</span>
                 </span>
               </button>
             ))}
@@ -132,6 +135,15 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
                 <input type="radio" name="link-mode" checked={mode === 'replace'} onChange={() => setMode('replace')} /> Replace my links
               </label>
             </fieldset>
+            {canReapply && (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <input type="checkbox" checked={reapply} onChange={(e) => setReapply(e.target.checked)} style={{ marginTop: 3 }} />
+                <span>
+                  Also put the {preview!.duplicates.toLocaleString()} links I already have into their folders’ categories
+                  <span className="hint" style={{ display: 'block' }}>Tags an earlier import made from subfolders are removed. Your own tags, flags and notes stay.</span>
+                </span>
+              </label>
+            )}
             {mode === 'replace' && lib.links.length > 0 && (
               <span className="error">This deletes your current {lib.links.length.toLocaleString()} links first. Export a backup before you continue. YouTube bookmarks are only ever added.</span>
             )}

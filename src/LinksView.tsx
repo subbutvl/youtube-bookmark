@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DuplicatesDialog } from './components/DuplicatesDialog';
 import { Header } from './components/Header';
-import { IconChevronDown, IconClose, IconFilter, IconGrid, IconList, IconSearch, IconUpload } from './components/Icons';
+import { IconChevronDown, IconClose, IconEdit, IconFilter, IconGrid, IconList, IconSearch, IconUpload } from './components/Icons';
 import { LinkAddDialog } from './components/LinkAddDialog';
 import { LinkCard, SiteIcon } from './components/LinkCard';
 import { LinkDrawer } from './components/LinkDrawer';
@@ -15,8 +15,8 @@ import { QuickLaunch } from './components/QuickLaunch';
 import { SettingsDialog } from './components/SettingsDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import type { LinkAddResult } from './lib/link-store';
-import { FLAG_LABELS, isNew, LINK_FLAGS, type Link, type LinkFlag } from './lib/link-types';
-import { applyLinkView, DEFAULT_LINK_VIEW, groupByDomain, linkKpis, linkTitle, LINK_SORT_LABELS, type LinkRow, type LinkSortKey, type LinkViewState } from './lib/link-view';
+import { FLAG_LABELS, isNew, LINK_FLAGS, SECTION_LABELS, type Link, type LinkFlag, type LinkSection } from './lib/link-types';
+import { applyLinkView, DEFAULT_LINK_VIEW, groupRows, linkKpis, linkTitle, LINK_SORT_LABELS, type LinkRow, type LinkSortKey, type LinkViewState } from './lib/link-view';
 import { openExternal } from './lib/platform';
 import { routeUrls } from './lib/route';
 import { isTauri } from './lib/storage';
@@ -39,17 +39,22 @@ let autoFetched = false;
 /** Rows drawn at a time; thousands of imported bookmarks stay quick to scroll. */
 const PAGE = 240;
 
-/** The Links library: KPI cards, quick launch, cards or table, grouped by site. */
-export function LinksView({ shell }: { shell: Shell }) {
+/** A tab of web links (Links, Git or Wikipedia): KPI cards, quick launch, cards or table, groups. */
+export function LinksView({ shell, section }: { shell: Shell; section: LinkSection }) {
   const store = useLinkStore();
   const ytStore = useStore();
-  const lib = useLinks();
+  const allLinks = useLinks();
+  // Categories and tags are shared by the link tabs; the links are this tab's own.
+  const lib = useMemo(() => ({ ...allLinks, links: allLinks.links.filter((l) => l.section === section) }), [allLinks, section]);
+  const tabName = SECTION_LABELS[section];
   const toast = useToast();
   const { theme, setThemePref } = shell;
   const [density, setDensity] = usePref<Density>('density', 'comfortable');
   const [sortPref, setSortPref] = usePref<LinkSortKey>('linkSort', 'added-desc');
   const [layout, setLayout] = usePref<'cards' | 'table'>('linkLayout', 'cards');
-  const [grouped, setGrouped] = usePref<'on' | 'off'>('linkGroupBySite', 'on');
+  // Links groups by site out of the box; Git and Wikipedia wait for groups made by hand.
+  const [grouped, setGrouped] = usePref<'on' | 'off'>(section === 'links' ? 'linkGroupBySite' : `linkGroupBySite.${section}`, section === 'links' ? 'on' : 'off');
+  const [groupName, setGroupName] = useState('');
   const [view, setView] = useState<LinkViewState>({ ...DEFAULT_LINK_VIEW, sort: sortPref });
   const [showFilters, setShowFilters] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
@@ -63,7 +68,7 @@ export function LinksView({ shell }: { shell: Shell }) {
   const patch = (p: Partial<LinkViewState>) => setView((v) => ({ ...v, ...p }));
   const items = useMemo(() => applyLinkView(lib, view), [lib, view]);
   // A site picked in the sidebar is already one group; show its links plainly.
-  const rows = useMemo<LinkRow[]>(() => (grouped === 'on' && !view.domain ? groupByDomain(items) : items.map((link) => ({ kind: 'link', link }))), [items, grouped, view.domain]);
+  const rows = useMemo<LinkRow[]>(() => (view.group ? items.map((link) => ({ kind: 'link', link })) : groupRows(items, grouped === 'on' && !view.domain)), [items, grouped, view.domain, view.group]);
   useEffect(() => setLimit(PAGE), [view, grouped, layout]);
   const shownRows = rows.slice(0, limit);
   const kpis = useMemo(() => linkKpis(lib.links), [lib.links]);
@@ -80,6 +85,16 @@ export function LinksView({ shell }: { shell: Shell }) {
     () => [...lib.tags].sort((a, b) => (tagUse.get(b.id) ?? 0) - (tagUse.get(a.id) ?? 0) || a.name.localeCompare(b.name)).slice(0, 30),
     [lib.tags, tagUse],
   );
+  const usedCats = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const l of lib.links) if (l.categoryId) n.set(l.categoryId, (n.get(l.categoryId) ?? 0) + 1);
+    return n;
+  }, [lib.links]);
+  const groups = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const l of lib.links) if (l.groupName) n.set(l.groupName, (n.get(l.groupName) ?? 0) + 1);
+    return [...n.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [lib.links]);
   const topSites = useMemo(() => {
     const n = new Map<string, Link[]>();
     for (const l of lib.links) {
@@ -108,6 +123,7 @@ export function LinksView({ shell }: { shell: Shell }) {
     if (autoFetched || !isTauri()) return;
     autoFetched = true;
     const pending = store.getSnapshot().links.filter((l) => l.metadataStatus === 'pending');
+    // All link tabs share one fetch on launch.
     if (pending.length) void fetchDetails(pending.map((l) => l.id));
   }, [store, fetchDetails]);
 
@@ -116,24 +132,37 @@ export function LinksView({ shell }: { shell: Shell }) {
     setModal(null);
     setView((v) => ({ ...DEFAULT_LINK_VIEW, sort: v.sort }));
     const l = store.getSnapshot().links.find((x) => x.id === id);
-    if (l) setExpanded((s) => new Set(s).add(l.domain));
+    if (l && l.section !== section) {
+      shell.setMode(l.section);
+      return;
+    }
+    if (l) setExpanded((s) => new Set(s).add(l.groupName ? `g:${l.groupName}` : `d:${l.domain}`));
     setFlashId(id);
     setTimeout(() => document.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     setTimeout(() => setFlashId((f) => (f === id ? null : f)), 1800);
-  }, [store]);
+  }, [store, section, shell]);
 
   const reportAdd = useCallback((r: LinkAddResult) => {
     setModal(null);
     const parts: string[] = [];
-    if (r.added.length) parts.push(`Added ${r.added.length} link${r.added.length === 1 ? '' : 's'}`);
+    const elsewhere = r.added.filter((l) => l.section !== section);
+    if (r.added.length > elsewhere.length) parts.push(`Added ${r.added.length - elsewhere.length} link${r.added.length - elsewhere.length === 1 ? '' : 's'}`);
+    for (const sec of new Set(elsewhere.map((l) => l.section))) {
+      const n = elsewhere.filter((l) => l.section === sec).length;
+      parts.push(`${n} saved to ${SECTION_LABELS[sec]}`);
+    }
     if (r.duplicates.length) parts.push(`${r.duplicates.length} already saved`);
     if (r.invalid.length) parts.push(`${r.invalid.length} not a web link`);
     if (!parts.length) return;
     const firstDup = r.duplicates[0]?.existing;
-    toast({ text: `${parts.join(', ')}.`, action: !r.added.length && firstDup ? { label: 'Show it', run: () => showExisting(firstDup.id) } : undefined }, 6000);
-  }, [toast, showExisting]);
+    const away = elsewhere[0]?.section;
+    toast({
+      text: `${parts.join(', ')}.`,
+      action: !r.added.length && firstDup ? { label: 'Show it', run: () => showExisting(firstDup.id) } : away ? { label: `Show ${SECTION_LABELS[away]}`, run: () => shell.setMode(away) } : undefined,
+    }, 6000);
+  }, [toast, showExisting, section, shell]);
 
-  // YouTube links typed here are saved to the YouTube library instead.
+  // YouTube links typed here are saved to the YouTube library, and Git or Wikipedia links to their tabs.
   const quickAdd = async (text: string): Promise<boolean> => {
     const routed = routeUrls(text);
     if (routed.youtube.length + routed.links.length > 1) {
@@ -199,14 +228,30 @@ export function LinksView({ shell }: { shell: Shell }) {
   const onQuickEdit = useCallback((id: string, kind: 'category' | 'tags', el: HTMLElement) => setQuickEdit({ id, kind, anchor: el.getBoundingClientRect() }), []);
   const closeQuickEdit = useCallback(() => setQuickEdit(null), []);
   const onTagClick = useCallback((id: string) => setView((v) => ({ ...v, tagIds: v.tagIds.includes(id) ? v.tagIds : [...v.tagIds, id] })), []);
-  const toggleGroup = useCallback((domain: string) => {
+  const toggleGroup = useCallback((key: string) => {
     setExpanded((s) => {
       const n = new Set(s);
-      if (n.has(domain)) n.delete(domain);
-      else n.add(domain);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
       return n;
     });
   }, []);
+  const groupSelected = async (ids: string[], name: string) => {
+    if (!name.trim()) return;
+    await store.setGroup(ids, name);
+    setExpanded((s) => new Set(s).add(`g:${name.trim()}`));
+    setGroupName('');
+    setSelected(new Set());
+    toast({ text: `Grouped ${ids.length} link${ids.length === 1 ? '' : 's'} as “${name.trim()}”.` });
+  };
+  const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
+  const commitRename = () => {
+    if (renaming && renaming.to.trim() && renaming.to.trim() !== renaming.from) {
+      const to = renaming.to.trim();
+      void store.renameGroup(section, renaming.from, to).then(() => setExpanded((s) => new Set(s).add(`g:${to}`)));
+    }
+    setRenaming(null);
+  };
 
   useEffect(() => {
     const ids = new Set(lib.links.map((l) => l.id));
@@ -240,6 +285,7 @@ export function LinksView({ shell }: { shell: Shell }) {
       else if (ctrl && e.shiftKey && key === 'g') setGrouped(grouped === 'on' ? 'off' : 'on');
       else if (modal || typing) handled = false;
       else if (ctrl && key === 'a') setSelected(new Set(items.map((l) => l.id)));
+      else if (ctrl && !e.shiftKey && key === 'g' && selected.size) focus('bulk-group');
       else if (e.key === 'Delete' && selected.size) void deleteIds([...selected]);
       else if (e.key === '/') focus('search');
       else if (e.key === '?') setModal({ kind: 'shortcuts' });
@@ -258,6 +304,7 @@ export function LinksView({ shell }: { shell: Shell }) {
   if (view.added !== 'all') chips.push({ label: view.added === 'today' ? 'Added today' : 'Added this week', remove: () => patch({ added: 'all' }) });
   for (const f of view.flags) chips.push({ label: FLAG_LABELS[f], remove: () => patch({ flags: view.flags.filter((x) => x !== f) }) });
   if (view.domain) chips.push({ label: `Site: ${view.domain}`, remove: () => patch({ domain: null }) });
+  if (view.group) chips.push({ label: `Group: ${view.group}`, remove: () => patch({ group: null }) });
   for (const id of view.categoryIds) chips.push({ label: `Category: ${id ? catById.get(id)?.name ?? '?' : 'Uncategorized'}`, remove: () => patch({ categoryIds: view.categoryIds.filter((x) => x !== id) }) });
   for (const id of view.tagIds) chips.push({ label: `Tag: #${tagById.get(id)?.name ?? '?'}`, remove: () => patch({ tagIds: view.tagIds.filter((x) => x !== id) }) });
   if (view.query.trim()) chips.push({ label: `Search: “${view.query.trim()}”`, remove: () => patch({ query: '' }) });
@@ -303,7 +350,7 @@ export function LinksView({ shell }: { shell: Shell }) {
   );
 
   const kpiCards: { label: string; value: string; sub: string; pressed: boolean; onClick: () => void }[] = [
-    { label: 'Total links', value: kpis.total.toLocaleString(), sub: `${siteCount.toLocaleString()} site${siteCount === 1 ? '' : 's'}`, pressed: isOnly({}), onClick: () => setView({ ...DEFAULT_LINK_VIEW, sort: view.sort }) },
+    { label: `Total ${section === 'links' ? 'links' : tabName}`, value: kpis.total.toLocaleString(), sub: `${siteCount.toLocaleString()} site${siteCount === 1 ? '' : 's'}`, pressed: isOnly({}), onClick: () => setView({ ...DEFAULT_LINK_VIEW, sort: view.sort }) },
     { label: 'Added today', value: kpis.today.toLocaleString(), sub: 'since midnight', pressed: isOnly({ added: 'today' }), onClick: () => only({ added: 'today' }) },
     { label: 'This week', value: kpis.week.toLocaleString(), sub: 'last 7 days', pressed: isOnly({ added: 'week' }), onClick: () => only({ added: 'week' }) },
     { label: 'New', value: kpis.fresh.toLocaleString(), sub: 'never opened', pressed: isOnly({ status: 'new' }), onClick: () => only({ status: 'new' }) },
@@ -313,31 +360,60 @@ export function LinksView({ shell }: { shell: Shell }) {
   ];
 
   const groupCard = (r: Extract<LinkRow, { kind: 'group' }>) => {
-    const open = expanded.has(r.domain);
+    const open = expanded.has(r.key);
     const fresh = r.links.filter(isNew).length;
+    const what = r.manual ? `in ${r.label}` : `from ${r.label}`;
     if (open) {
       return (
-        <section key={`g:${r.domain}`} className="site-group open" aria-label={`${r.links.length} links from ${r.domain}`}>
-          <button type="button" className="group-toggle" aria-expanded onClick={() => toggleGroup(r.domain)}>
-            <SiteIcon link={r.links[0]} size={22} />
-            <b>{r.domain}</b>
-            <span className="count">{r.links.length} links{fresh ? ` · ${fresh} new` : ''}</span>
-            <span className="spacer" />
-            <span className="hint">Collapse</span>
-            <IconChevronDown size={16} />
-          </button>
+        <section key={r.key} className={`site-group open${r.manual ? ' manual' : ''}`} aria-label={`${r.links.length} links ${what}`}>
+          <div className="group-head">
+            <button type="button" className="group-toggle" aria-expanded onClick={() => renaming?.from !== r.label && toggleGroup(r.key)}>
+              <SiteIcon link={r.links[0]} size={22} />
+              {r.manual && renaming?.from === r.label ? (
+                <input
+                  className="input"
+                  style={{ height: 30 }}
+                  autoFocus
+                  aria-label="Group name"
+                  value={renaming.to}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setRenaming({ ...renaming, to: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRename();
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setRenaming(null);
+                    }
+                  }}
+                  onBlur={commitRename}
+                />
+              ) : (
+                <b>{r.label}</b>
+              )}
+              <span className="count">{r.links.length} links{fresh ? ` · ${fresh} new` : ''}</span>
+              <span className="spacer" />
+              <span className="hint">Collapse</span>
+              <IconChevronDown size={16} />
+            </button>
+            {r.manual && (
+              <>
+                <button type="button" className="btn btn-sm" onClick={() => setRenaming({ from: r.label, to: r.label })}><IconEdit size={13} />Rename</button>
+                <button type="button" className="btn btn-sm" onClick={() => void store.setGroup(r.links.map((l) => l.id), null)}>Ungroup</button>
+              </>
+            )}
+          </div>
           <div className={`grid${density === 'compact' ? ' compact' : ''}`}>{r.links.map(card)}</div>
         </section>
       );
     }
     return (
-      <article key={`g:${r.domain}`} className="card site-group-card">
-        <button type="button" className="sg-open" aria-expanded={false} onClick={() => toggleGroup(r.domain)} aria-label={`Show ${r.links.length} links from ${r.domain}`}>
+      <article key={r.key} className={`card site-group-card${r.manual ? ' manual' : ''}`}>
+        <button type="button" className="sg-open" aria-expanded={false} onClick={() => toggleGroup(r.key)} aria-label={`Show ${r.links.length} links ${what}`}>
           <span className="sg-head">
             <SiteIcon link={r.links[0]} size={28} />
-            <span className="sg-domain">{r.domain}</span>
+            <span className="sg-domain">{r.label}</span>
           </span>
-          <span className="badge sg-count">{r.links.length} links ▸</span>
+          <span className="badge sg-count">{r.manual ? 'Group · ' : ''}{r.links.length} links ▸</span>
           <span className="sg-list">
             {r.links.slice(0, 4).map((l) => <span key={l.id} className="sg-item">{linkTitle(l)}</span>)}
             {r.links.length > 4 && <span className="hint">and {r.links.length - 4} more</span>}
@@ -351,7 +427,7 @@ export function LinksView({ shell }: { shell: Shell }) {
   return (
     <div className="app">
       <Header
-        mode="links"
+        mode={section}
         setMode={shell.setMode}
         theme={theme}
         toggleTheme={() => setThemePref(theme === 'dark' ? 'light' : 'dark')}
@@ -364,10 +440,10 @@ export function LinksView({ shell }: { shell: Shell }) {
       />
 
       <div className="body">
-        <nav className="sidebar" aria-label="Links library">
+        <nav className="sidebar" aria-label={`${tabName} library`}>
           <div className="nav-group">
             <div className="nav-heading">Status</div>
-            {navItem('All links', lib.links.length, isOnly({}), () => setView({ ...DEFAULT_LINK_VIEW, sort: view.sort }))}
+            {navItem(section === 'links' ? 'All links' : `All ${tabName}`, lib.links.length, isOnly({}), () => setView({ ...DEFAULT_LINK_VIEW, sort: view.sort }))}
             {navItem('New', kpis.fresh, view.status === 'new', () => patch({ status: view.status === 'new' ? 'all' : 'new' }))}
             {navItem('Viewed', lib.links.filter((l) => l.viewed).length, view.status === 'viewed', () => patch({ status: view.status === 'viewed' ? 'all' : 'viewed' }))}
             {LINK_FLAGS.map((f) => navItem(FLAG_LABELS[f], lib.links.filter((l) => l.flags.includes(f)).length, view.flags.includes(f), () => toggleFlagFilter(f), f))}
@@ -377,10 +453,10 @@ export function LinksView({ shell }: { shell: Shell }) {
               Categories
               <button type="button" className="btn-link" onClick={() => setModal({ kind: 'manage' })}>Manage</button>
             </div>
-            {sortedCats.map((c) =>
+            {sortedCats.filter((c) => usedCats.has(c.id) || view.categoryIds.includes(c.id)).map((c) =>
               navItem(
                 <><span className="swatch" style={{ background: c.color }} />{c.name}</>,
-                lib.links.filter((l) => l.categoryId === c.id).length,
+                usedCats.get(c.id) ?? 0,
                 view.categoryIds.includes(c.id),
                 () => patch({ categoryIds: view.categoryIds.includes(c.id) ? view.categoryIds.filter((x) => x !== c.id) : [...view.categoryIds, c.id] }),
                 c.id,
@@ -393,6 +469,12 @@ export function LinksView({ shell }: { shell: Shell }) {
               () => patch({ categoryIds: view.categoryIds.includes('') ? view.categoryIds.filter((x) => x !== '') : [...view.categoryIds, ''] }),
             )}
           </div>
+          {groups.length > 0 && (
+            <div className="nav-group">
+              <div className="nav-heading">Groups</div>
+              {groups.map(([name, n]) => navItem(<><span className="swatch group-swatch" />{name}</>, n, view.group === name, () => patch({ group: view.group === name ? null : name }), `grp:${name}`))}
+            </div>
+          )}
           {topSites.length > 0 && (
             <div className="nav-group">
               <div className="nav-heading">Top sites</div>
@@ -429,7 +511,7 @@ export function LinksView({ shell }: { shell: Shell }) {
             ))}
           </section>
 
-          <QuickLaunch onOpen={onOpen} />
+          <QuickLaunch section={section} onOpen={onOpen} />
 
           <div className="toolbar">
             <div className="search">
@@ -598,6 +680,23 @@ export function LinksView({ shell }: { shell: Shell }) {
                 <input id="bulk-link-tag" className="select" style={{ width: 120 }} placeholder="Add tag…" value={bulkTag} onChange={(e) => setBulkTag(e.target.value)} />
                 <button type="submit" className="btn" disabled={!bulkTag.trim()}>Add</button>
               </form>
+              <form
+                style={{ display: 'flex', gap: 4 }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void groupSelected(selectedIds, groupName);
+                }}
+              >
+                <label htmlFor="bulk-group" className="sr-only">Group name</label>
+                <input id="bulk-group" className="select" style={{ width: 130 }} list="group-names" placeholder="Group as…" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+                <datalist id="group-names">{groups.map(([g]) => <option key={g} value={g} />)}</datalist>
+                <button type="submit" className="btn" disabled={!groupName.trim()}>Group</button>
+              </form>
+              {lib.links.some((l) => selected.has(l.id) && l.groupName) && <button type="button" className="btn" onClick={() => void store.setGroup(selectedIds, null)}>Ungroup</button>}
+              <select className="select" aria-label="Move to tab" value="" onChange={(e) => e.target.value && void store.moveToSection(selectedIds, e.target.value as LinkSection)}>
+                <option value="">Move to…</option>
+                {(Object.keys(SECTION_LABELS) as LinkSection[]).filter((x) => x !== section).map((x) => <option key={x} value={x}>{SECTION_LABELS[x]}</option>)}
+              </select>
               <button type="button" className="btn" onClick={() => void fetchDetails(selectedIds)}>Refresh details</button>
               <button type="button" className="btn" onClick={() => void deleteIds(selectedIds)}>Delete</button>
               <button type="button" className="btn" onClick={() => setSelected(new Set(items.map((l) => l.id)))}>Select all {items.length}</button>

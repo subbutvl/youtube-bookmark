@@ -168,6 +168,52 @@ async fn fetch_page(url: String) -> Result<FetchedPage, String> {
     Ok(FetchedPage { final_url, html: String::from_utf8_lossy(&body).into_owned() })
 }
 
+/// A feed (RSS or Atom) or a page that may point to one, as text.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FetchedText {
+    final_url: String,
+    content_type: String,
+    body: String,
+}
+
+const FEED_LIMIT: usize = 4 * 1024 * 1024;
+
+#[tauri::command]
+async fn fetch_text(url: String) -> Result<FetchedText, String> {
+    let parsed = web_url(&url)?;
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 TubeMarks")
+        .timeout(std::time::Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::limited(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut res = client
+        .get(parsed)
+        .header("Accept", "application/rss+xml,application/atom+xml,application/xml;q=0.9,text/xml;q=0.9,text/html;q=0.8,*/*;q=0.5")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let final_url = res.url().to_string();
+    if !res.status().is_success() {
+        return Err(format!("The site answered {}", res.status()));
+    }
+    let content_type = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(chunk) = res.chunk().await.map_err(|e| e.to_string())? {
+        body.extend_from_slice(&chunk);
+        if body.len() >= FEED_LIMIT {
+            break;
+        }
+    }
+    Ok(FetchedText { final_url, content_type, body: String::from_utf8_lossy(&body).into_owned() })
+}
+
 /// A browser's own bookmarks file (Chrome, Edge, Brave and other Chromium browsers).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -231,6 +277,18 @@ fn migrations() -> Vec<Migration> {
         description: "add link bookmarks",
         sql: include_str!("../migrations/0003_links.sql"),
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 4,
+        description: "link tabs and manual groups",
+        sql: include_str!("../migrations/0004_link_sections.sql"),
+        kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 5,
+        description: "rss feeds",
+        sql: include_str!("../migrations/0005_rss.sql"),
+        kind: MigrationKind::Up,
     }]
 }
 
@@ -290,7 +348,7 @@ pub fn run() {
                 w.app_handle().exit(0);
             }
         })
-        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, show_channel_view, move_channel_view, close_channel_view, channel_view_nav, fetch_page, browser_bookmark_files])
+        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, show_channel_view, move_channel_view, close_channel_view, channel_view_nav, fetch_page, fetch_text, browser_bookmark_files])
         .run(tauri::generate_context!())
         .expect("error while running TubeMarks");
 }

@@ -13,6 +13,7 @@ import { ShortcutsDialog } from './components/ShortcutsDialog';
 import type { AddResult } from './lib/library';
 import { TYPE_PLURALS, type Bookmark, type BookmarkType } from './lib/types';
 import { applyView, DEFAULT_VIEW, groupByDay, SORT_LABELS, type SortKey, type ViewState } from './lib/view';
+import { SECTION_LABELS } from './lib/link-types';
 import { routeUrls } from './lib/route';
 import { errorText, useLibrary, useLinkStore, usePref, useStore, useToast, type Density, type Shell } from './state';
 
@@ -128,8 +129,9 @@ export function YouTubeView({ shell }: { shell: Shell }) {
     try {
       if (routed.links.length) {
         const r = await linkStore.addUrls(routed.links);
-        const dup = r.duplicates.length > 0;
-        toast({ text: dup ? 'That link is already in Links.' : 'Saved to Links (it isn’t a YouTube link).', action: { label: 'Show Links', run: () => shell.setMode('links') } }, 6000);
+        const l = r.added[0] ?? r.duplicates[0]?.existing;
+        const tab = l ? SECTION_LABELS[l.section] : 'Links';
+        toast({ text: r.added.length ? `Saved to ${tab} (it isn’t a YouTube link).` : `That link is already in ${tab}.`, action: l ? { label: `Show ${tab}`, run: () => shell.setMode(l.section) } : undefined }, 6000);
         return true;
       }
       if (!routed.youtube.length) {

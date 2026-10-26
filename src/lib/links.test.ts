@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { exportLinksHtml, exportLinksJson, parseBookmarksHtml, parseChromiumBookmarks, parseLinkImportFile, parseLinksCsv } from './link-backup';
 import { LinkStore, type MetaFetcher } from './link-store';
 import { nearKey, parseLink } from './link-url';
-import { applyLinkView, DEFAULT_LINK_VIEW, groupByDomain, linkKpis } from './link-view';
+import { applyLinkView, DEFAULT_LINK_VIEW, groupRows, linkKpis } from './link-view';
 import { parsePageMeta } from './page-meta';
 import { routeUrls } from './route';
 import { MemoryStorage } from './storage';
@@ -123,12 +123,12 @@ describe('LinkStore', () => {
     for (const l of r.added.slice(0, 15)) await store.pin(l.id);
     await expect(store.pin(r.added[15].id)).rejects.toThrow(/15/);
     await store.reorderQuickLaunch([r.added[2].id, r.added[0].id]);
-    expect(store.quickLaunch[0].id).toBe(r.added[2].id);
+    expect(store.quickLaunchFor('links')[0].id).toBe(r.added[2].id);
     await store.unpin(r.added[2].id);
-    expect(store.quickLaunch).toHaveLength(14);
+    expect(store.quickLaunchFor('links')).toHaveLength(14);
   });
 
-  it('imports with folders as categories and tags, and survives a reload', async () => {
+  it('imports with folder paths as categories, and survives a reload', async () => {
     const { store, storage } = await makeStore();
     const parsed = parseBookmarksHtml(BOOKMARKS_HTML);
     const res = await store.importItems(parsed.items, 'merge');
@@ -137,8 +137,48 @@ describe('LinkStore', () => {
     await reloaded.init();
     const lib = reloaded.getSnapshot();
     expect(lib.links).toHaveLength(2);
-    expect(lib.categories.map((c) => c.name)).toEqual(['Dev']);
-    expect(lib.tags.map((t) => t.name)).toEqual(['rust']);
+    expect(lib.categories.map((c) => c.name)).toEqual(['Dev / Rust']);
+    expect(lib.tags).toEqual([]);
+  });
+
+  it('re-applies folders to links an earlier import tagged', async () => {
+    const { store } = await makeStore();
+    // What the earlier import made: top folder as category, subfolder as a tag, plus the user's own tag.
+    await store.importItems([{ ...parseLink('https://doc.rust-lang.org/book/')!, categoryName: 'Dev', tagNames: ['rust', 'mine'] }], 'merge');
+    const parsed = parseBookmarksHtml(BOOKMARKS_HTML);
+    expect(parsed.hasFolders).toBe(true);
+    const res = await store.importItems(parsed.items, 'merge', { reapplyFolders: true });
+    expect(res).toMatchObject({ added: 1, duplicates: 1, updated: 1 });
+    const lib = store.getSnapshot();
+    const book = lib.links.find((l) => l.domain === 'doc.rust-lang.org')!;
+    expect(lib.categories.find((c) => c.id === book.categoryId)?.name).toBe('Dev / Rust');
+    expect(lib.tags.map((t) => t.name)).toEqual(['mine']);
+    expect(lib.categories.map((c) => c.name)).toEqual(['Dev / Rust']);
+  });
+
+  it('sends Git and Wikipedia links to their tabs and moves links between tabs', async () => {
+    const { store } = await makeStore();
+    const r = await store.addUrls(['https://github.com/a/b', 'https://en.wikipedia.org/wiki/Rust', 'https://example.com']);
+    expect(r.added.map((l) => l.section)).toEqual(['git', 'wiki', 'links']);
+    await store.pin(r.added[0].id);
+    await store.moveToSection([r.added[0].id], 'links');
+    const moved = store.getSnapshot().links.find((l) => l.id === r.added[0].id)!;
+    expect(moved.section).toBe('links');
+    expect(moved.quickLaunch).toBeNull();
+  });
+
+  it('keeps manual groups across sites and renames them', async () => {
+    const { store } = await makeStore();
+    const r = await store.addUrls(['https://a.com/1', 'https://b.com/2', 'https://a.com/3']);
+    await store.setGroup([r.added[0].id, r.added[1].id], 'Reading');
+    expect(store.groupNames('links')).toEqual(['Reading']);
+    const rows = groupRows(store.getSnapshot().links, false);
+    expect(rows.map((x) => x.kind)).toEqual(['group', 'link']);
+    expect(rows[0]).toMatchObject({ manual: true, label: 'Reading' });
+    // With site grouping on, the lone a.com link stays a plain row (its sibling is in the manual group).
+    expect(groupRows(store.getSnapshot().links, true).map((x) => x.kind)).toEqual(['group', 'link']);
+    await store.renameGroup('links', 'Reading', 'Later reading');
+    expect(store.groupNames('links')).toEqual(['Later reading']);
   });
 });
 
@@ -163,10 +203,10 @@ describe('link-backup', () => {
   it('reads browser bookmarks HTML with folders, dates and YouTube routing', () => {
     const p = parseBookmarksHtml(BOOKMARKS_HTML);
     expect(p.items.map((i) => i.domain)).toEqual(['doc.rust-lang.org', 'news.ycombinator.com']);
-    expect(p.items[0]).toMatchObject({ title: 'The Book', categoryName: 'Dev', tagNames: ['rust'], createdAt: new Date(1700000000000).toISOString() });
+    expect(p.items[0]).toMatchObject({ title: 'The Book', categoryName: 'Dev / Rust', tagNames: [], folderTags: ['rust'], createdAt: new Date(1700000000000).toISOString() });
     expect(p.items[1]).toMatchObject({ title: 'HN & more', categoryName: undefined });
     expect(p.youtube).toHaveLength(1);
-    expect(p.youtube[0]).toMatchObject({ type: 'video', categoryName: 'Dev', tagNames: ['rust'] });
+    expect(p.youtube[0]).toMatchObject({ type: 'video', categoryName: 'Dev / Rust', tagNames: [] });
     expect(p.invalid).toBe(1);
   });
 
@@ -225,7 +265,7 @@ describe('link view', () => {
     expect(applyLinkView(after, { ...DEFAULT_LINK_VIEW, sort: 'opened-most' })[0].id).toBe(first.id);
     const k = linkKpis(after.links);
     expect(k).toMatchObject({ total: 3, today: 3, week: 3, fresh: 2, viewedPct: 33 });
-    const rows = groupByDomain(applyLinkView(after, { ...DEFAULT_LINK_VIEW, sort: 'domain' }));
+    const rows = groupRows(applyLinkView(after, { ...DEFAULT_LINK_VIEW, sort: 'domain' }), true);
     expect(rows.map((r) => r.kind)).toEqual(['group', 'link']);
   });
 

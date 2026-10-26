@@ -15,6 +15,8 @@ export interface LinkViewState {
   /** Links must carry every flag listed. */
   flags: LinkFlag[];
   domain: string | null;
+  /** One of the user's own groups. */
+  group: string | null;
   added: AddedWithin;
   sort: LinkSortKey;
 }
@@ -27,6 +29,7 @@ export const DEFAULT_LINK_VIEW: LinkViewState = {
   status: 'all',
   flags: [],
   domain: null,
+  group: null,
   added: 'all',
   sort: 'added-desc',
 };
@@ -68,9 +71,10 @@ export function applyLinkView(lib: LinkLibrary, v: LinkViewState, now = new Date
     if (v.status === 'viewed' && !l.viewed) return false;
     if (v.flags.some((f) => !l.flags.includes(f))) return false;
     if (v.domain && l.domain !== v.domain) return false;
+    if (v.group && l.groupName !== v.group) return false;
     if (since > -Infinity && Date.parse(l.createdAt) < since) return false;
     if (words.length) {
-      const hay = fold([l.title, l.url, l.description, l.siteName, l.notes, catName.get(l.categoryId ?? '') ?? '', ...l.tagIds.map((t) => tagName.get(t) ?? '')].join(' '));
+      const hay = fold([l.title, l.url, l.groupName ?? '', l.description, l.siteName, l.notes, catName.get(l.categoryId ?? '') ?? '', ...l.tagIds.map((t) => tagName.get(t) ?? '')].join(' '));
       if (!words.every((w) => hay.includes(w))) return false;
     }
     return true;
@@ -113,26 +117,40 @@ export function linkKpis(links: Link[], now = new Date()): LinkKpis {
   return { total: links.length, today: t, week: w, fresh: n, later, must, viewedPct: links.length ? Math.round((viewed / links.length) * 100) : 0 };
 }
 
-export type LinkRow = { kind: 'link'; link: Link } | { kind: 'group'; domain: string; links: Link[] };
+export type LinkRow =
+  | { kind: 'link'; link: Link }
+  /** `manual` groups are the user's own; the others are links from one site. */
+  | { kind: 'group'; key: string; label: string; manual: boolean; links: Link[] };
 
 /**
- * Folds links from the same site into one group, placed where its first link
- * falls in the current sort. Sites with a single link stay as plain rows.
+ * Folds links into groups, each placed where its first link falls in the current sort:
+ * the user's own groups always, and (with `bySite`) other links from the same site.
+ * A site with a single link stays a plain row.
  */
-export function groupByDomain(items: Link[]): LinkRow[] {
-  const byDomain = new Map<string, Link[]>();
+export function groupRows(items: Link[], bySite: boolean): LinkRow[] {
+  const keyOf = (l: Link) => (l.groupName ? `g:${l.groupName}` : bySite ? `d:${l.domain}` : null);
+  const groups = new Map<string, Link[]>();
   for (const l of items) {
-    const list = byDomain.get(l.domain);
+    const key = keyOf(l);
+    if (!key) continue;
+    const list = groups.get(key);
     if (list) list.push(l);
-    else byDomain.set(l.domain, [l]);
+    else groups.set(key, [l]);
   }
   const rows: LinkRow[] = [];
   const placed = new Set<string>();
   for (const l of items) {
-    if (placed.has(l.domain)) continue;
-    placed.add(l.domain);
-    const list = byDomain.get(l.domain)!;
-    rows.push(list.length > 1 ? { kind: 'group', domain: l.domain, links: list } : { kind: 'link', link: l });
+    const key = keyOf(l);
+    if (!key) {
+      rows.push({ kind: 'link', link: l });
+      continue;
+    }
+    if (placed.has(key)) continue;
+    placed.add(key);
+    const list = groups.get(key)!;
+    const manual = !!l.groupName;
+    if (!manual && list.length === 1) rows.push({ kind: 'link', link: l });
+    else rows.push({ kind: 'group', key, label: manual ? l.groupName! : l.domain, manual, links: list });
   }
   return rows;
 }

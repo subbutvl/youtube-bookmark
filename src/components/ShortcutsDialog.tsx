@@ -1,8 +1,7 @@
 import { Dialog } from './Dialog';
 
 export const SHORTCUTS: { keys: string[]; action: string }[] = [
-  { keys: ['Ctrl', '1'], action: 'YouTube library' },
-  { keys: ['Ctrl', '2'], action: 'Links' },
+  { keys: ['Ctrl', '1…6'], action: 'Tabs: YouTube, Links, Git, Wikipedia, RSS, Movies & TV' },
   { keys: ['Ctrl', 'L'], action: 'Paste a link (focus the add box)' },
   { keys: ['Ctrl', 'Shift', 'N'], action: 'Add many links' },
   { keys: ['Ctrl', 'F'], action: 'Search' },
@@ -15,6 +14,9 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['Ctrl', 'H'], action: 'Library / History (YouTube)' },
   { keys: ['Ctrl', 'Shift', 'T'], action: 'Cards / table (Links)' },
   { keys: ['Ctrl', 'Shift', 'G'], action: 'Group by site on or off (Links)' },
+  { keys: ['Ctrl', 'G'], action: 'Group the selected links' },
+  { keys: ['R'], action: 'Refresh feeds (RSS)' },
+  { keys: ['J', 'K'], action: 'Next / previous article (RSS)' },
   { keys: ['Ctrl', 'D'], action: 'Light / dark mode' },
   { keys: ['Ctrl', 'Shift', 'C'], action: 'Comfortable / compact cards' },
   { keys: ['Ctrl', 'A'], action: 'Select everything shown' },

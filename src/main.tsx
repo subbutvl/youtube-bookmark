@@ -3,10 +3,13 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { LibraryStore } from './lib/library';
 import { LinkStore } from './lib/link-store';
-import { fetchPageMeta } from './lib/platform';
+import { fetchPageMeta, fetchText } from './lib/platform';
+import { RssStore } from './lib/rss-store';
 import { isTauri, MemoryStorage, SqliteStorage } from './lib/storage';
 import { StoreProvider, ToastProvider } from './state';
 import './styles.css';
+
+const REFRESH_MS = 30 * 60_000;
 
 async function start() {
   const root = createRoot(document.getElementById('root')!);
@@ -15,10 +18,16 @@ async function start() {
     const storage = isTauri() ? await SqliteStorage.open() : new MemoryStorage('tubemarks-preview');
     const store = new LibraryStore(storage, undefined, import.meta.env.VITE_YOUTUBE_API_KEY ?? '');
     const linkStore = new LinkStore(storage.links, fetchPageMeta);
-    await Promise.all([store.init(), linkStore.init()]);
+    const rssStore = new RssStore(storage.rss, fetchText);
+    await Promise.all([store.init(), linkStore.init(), rssStore.init()]);
+    // Feeds are read again every half hour while the app is open (and at start, if stale).
+    if (isTauri()) {
+      void rssStore.refreshAll(REFRESH_MS);
+      setInterval(() => void rssStore.refreshAll(REFRESH_MS), 5 * 60_000);
+    }
     root.render(
       <StrictMode>
-        <StoreProvider store={store} linkStore={linkStore}>
+        <StoreProvider store={store} linkStore={linkStore} rssStore={rssStore}>
           <ToastProvider>
             <App />
           </ToastProvider>

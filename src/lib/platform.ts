@@ -25,7 +25,7 @@ export async function pickTextFile(): Promise<PickedFile | null> {
     const path = await open({
       multiple: false,
       directory: false,
-      filters: [{ name: 'Bookmarks', extensions: ['json', 'csv', 'txt', 'html', 'htm', ...LEGACY_EXTENSIONS] }],
+      filters: [{ name: 'Bookmarks', extensions: ['json', 'csv', 'txt', 'html', 'htm', 'opml', 'xml', ...LEGACY_EXTENSIONS] }],
     });
     if (typeof path !== 'string') return null;
     const name = path.split(/[\\/]/).pop() ?? path;
@@ -36,7 +36,7 @@ export async function pickTextFile(): Promise<PickedFile | null> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,.csv,.txt,.html,.htm';
+    input.accept = '.json,.csv,.txt,.html,.htm,.opml,.xml';
     input.onchange = async () => {
       const f = input.files?.[0];
       if (f && isLegacyDb(f.name)) return reject(new Error('Importing from the old app works in the desktop app only.'));
@@ -132,4 +132,11 @@ export async function browserBookmarkFiles(): Promise<BrowserBookmarkFile[]> {
 export async function readTextFile(path: string): Promise<string> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<string>('read_text_file', { path });
+}
+
+/** Downloads a feed or page as text (desktop app only; sites can't be read across origins from the window). */
+export async function fetchText(url: string): Promise<{ finalUrl: string; contentType: string; body: string }> {
+  if (!isTauri()) throw new Error('Feeds are read in the desktop app only.');
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke('fetch_text', { url });
 }
