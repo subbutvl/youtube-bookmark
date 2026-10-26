@@ -366,7 +366,7 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .kpi-value { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .quick-launch {
   display: flex; align-items: center; gap: 4px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px;
-  background: var(--surface); overflow-x: auto; min-height: 70px;
+  background: var(--surface); overflow-x: auto; overflow-y: hidden; min-height: 70px;
 }
 .ql-label { flex: none; padding-right: 10px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .ql-item { position: relative; flex: none; }
@@ -446,7 +446,7 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .link-table tr.child td:nth-child(2) { padding-left: 34px; }
 .link-table tr.group-row td { background: var(--surface2); }
 .link-table .c-check { width: 34px; }
-.link-table .c-title { display: flex; align-items: center; gap: 10px; min-width: 260px; max-width: 520px; }
+.link-table .c-title { display: flex; align-items: center; gap: 10px; min-width: 220px; max-width: 420px; }
 .link-table .t-text { display: flex; flex-direction: column; min-width: 0; }
 .link-table .t-link { border: 0; background: none; padding: 0; text-align: left; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .link-table .t-link:hover { text-decoration: underline; }
@@ -456,6 +456,10 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .link-table .c-tags .tag-pill { background: none; cursor: pointer; margin-right: 3px; }
 .link-table .c-flags { white-space: nowrap; }
 .link-table .c-flags .flag-btn { margin-right: 3px; }
+/* Unset flags only show on the row being pointed at, so the table fits without scrolling. */
+.link-table .c-flags .flag-btn[aria-pressed='false'] { visibility: hidden; }
+.link-table tr:hover .c-flags .flag-btn, .link-table .c-flags .flag-btn:focus-visible { visibility: visible; }
+.link-table .c-actions .icon-btn.sm { width: 26px; }
 .link-table .c-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 .link-table .c-date { white-space: nowrap; color: var(--muted); }
 .link-table .c-actions { white-space: nowrap; text-align: right; }

@@ -46,7 +46,6 @@ export function LinkTable(p: Props) {
             <span className="hint t-url" title={l.url}>{l.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
           </span>
         </td>
-        <td className="c-site">{l.domain}</td>
         <td>
           <button type="button" className={`cat-pill${cat ? '' : ' unset'}`} onClick={(e) => p.onQuickEdit(l.id, 'category', e.currentTarget)}>
             {cat && <span className="swatch" style={{ background: cat.color }} />}{cat?.name ?? 'Category'}
@@ -82,7 +81,6 @@ export function LinkTable(p: Props) {
           <tr>
             <th className="c-check"><input type="checkbox" aria-label="Select all shown" checked={allSelected} onChange={() => p.onSelectMany(all.map((l) => l.id), !allSelected)} /></th>
             <th>Title</th>
-            <th>Site</th>
             <th>Category</th>
             <th>Tags</th>
             <th>Status</th>
@@ -102,7 +100,7 @@ export function LinkTable(p: Props) {
                   <td className="c-check">
                     <input type="checkbox" aria-label={`Select all ${r.links.length} from ${r.domain}`} checked={r.links.every((l) => p.selected.has(l.id))} onChange={(e) => p.onSelectMany(r.links.map((l) => l.id), e.target.checked)} />
                   </td>
-                  <td colSpan={9}>
+                  <td colSpan={8}>
                     <button type="button" className="group-toggle" aria-expanded={open} onClick={() => p.onToggleGroup(r.domain)}>
                       <IconChevronDown size={16} className={open ? '' : 'rot'} />
                       <SiteIcon link={r.links[0]} size={18} />
