@@ -20,7 +20,7 @@ export const FEED_CATALOG: { category: string; feeds: CatalogFeed[] }[] = [
     feeds: [
       { title: 'Smashing Magazine', url: 'https://www.smashingmagazine.com/feed/' },
       { title: 'CSS-Tricks', url: 'https://css-tricks.com/feed/' },
-      { title: 'Codrops', url: 'https://tympanus.net/codrops/feed/' },
+      { title: 'Codrops', url: 'https://feeds.feedburner.com/tympanus' },
       { title: 'A List Apart', url: 'https://alistapart.com/main/feed/' },
       { title: 'Sidebar', url: 'https://sidebar.io/feed.xml' },
     ],
@@ -41,7 +41,7 @@ export const FEED_CATALOG: { category: string; feeds: CatalogFeed[] }[] = [
     feeds: [
       { title: 'OpenAI News', url: 'https://openai.com/news/rss.xml' },
       { title: 'Google AI', url: 'https://blog.google/technology/ai/rss/' },
-      { title: 'Hugging Face Blog', url: 'https://huggingface.co/blog/feed.xml' },
+      { title: 'MarkTechPost', url: 'https://www.marktechpost.com/feed/' },
       { title: 'MIT Technology Review: AI', url: 'https://www.technologyreview.com/topic/artificial-intelligence/feed' },
       { title: 'The Verge: AI', url: 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml' },
       { title: 'Simon Willison', url: 'https://simonwillison.net/atom/everything/' },
@@ -53,7 +53,7 @@ export const FEED_CATALOG: { category: string; feeds: CatalogFeed[] }[] = [
       { title: 'STAT News', url: 'https://www.statnews.com/feed/' },
       { title: 'Medical Xpress', url: 'https://medicalxpress.com/rss-feed/' },
       { title: 'ScienceDaily: Health & Medicine', url: 'https://www.sciencedaily.com/rss/health_medicine.xml' },
-      { title: 'NIH News Releases', url: 'https://www.nih.gov/news-releases/feed.xml' },
+      { title: 'WHO News', url: 'https://www.who.int/rss-feeds/news-english.xml' },
       { title: 'The BMJ', url: 'https://www.bmj.com/rss/recent.xml' },
     ],
   },
