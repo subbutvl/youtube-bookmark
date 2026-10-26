@@ -206,6 +206,21 @@ export class RssStore {
     this.emit();
   }
 
+  /** Moves every feed in category `from` to `to` ('' for none). */
+  async renameCategory(from: string, to: string) {
+    const changed = this.lib.feeds.filter((f) => f.folder === from).map((f) => ({ ...f, folder: to.trim() }));
+    if (!changed.length) return;
+    await this.storage.saveFeeds(changed);
+    const byId = new Map(changed.map((f) => [f.id, f]));
+    this.lib.feeds = this.lib.feeds.map((f) => byId.get(f.id) ?? f);
+    this.emit();
+  }
+
+  /** True when a feed with this address is already followed. */
+  isFollowing(url: string) {
+    return this.lib.feeds.some((f) => sameUrl(f.url, url));
+  }
+
   async unfollow(id: string) {
     await this.storage.deleteFeeds([id]);
     this.lib.feeds = this.lib.feeds.filter((f) => f.id !== id);

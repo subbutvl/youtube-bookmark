@@ -118,6 +118,17 @@ describe('RssStore', () => {
     expect(again.getSnapshot()).toEqual({ feeds: [], items: [] });
   });
 
+  it('files feeds under categories and renames them', async () => {
+    const storage = new MemoryStorage();
+    const store = new RssStore(storage.rss, fetcher);
+    await store.init();
+    const { feed } = await store.follow('https://example.com/feed', 'Coding');
+    expect(feed.folder).toBe('Coding');
+    expect(store.isFollowing('https://example.com/feed/')).toBe(true);
+    await store.renameCategory('Coding', 'Dev');
+    expect(store.getSnapshot().feeds[0].folder).toBe('Dev');
+  });
+
   it('records a failed refresh on the feed', async () => {
     const storage = new MemoryStorage();
     const store = new RssStore(storage.rss, fetcher);

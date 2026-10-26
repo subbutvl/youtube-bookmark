@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { IconEdit, IconExternal, IconLink, IconRefresh, IconRss, IconSearch, IconStar, IconTrash } from './components/Icons';
+import { FeedCatalogDialog } from './components/FeedCatalogDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { WebDrawer } from './components/WebDrawer';
+import { STARTER_CATEGORIES } from './lib/feed-catalog';
 import { SECTION_LABELS } from './lib/link-types';
 import { openExternal, pickTextFile, saveTextFile } from './lib/platform';
 import type { RssFeed, RssItem } from './lib/rss-types';
@@ -10,17 +12,57 @@ import { isTauri } from './lib/storage';
 import { fold } from './lib/view';
 import { errorText, useLinkStore, usePref, useRss, useRssStore, useToast, type Shell } from './state';
 
+/** All, Starred, a feed's id, or a category as `cat:<name>` ('cat:' is Uncategorized). */
 type Scope = 'all' | 'starred' | string;
+const catScope = (name: string) => `cat:${name}`;
+
+function readList(json: string): string[] {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A category dropdown that can also make a new category in place. */
+function CategoryPicker({ value, categories, onChange, label }: { value: string; categories: string[]; onChange: (name: string) => void; label: string }) {
+  const [adding, setAdding] = useState<string | null>(null);
+  if (adding !== null) {
+    const done = () => {
+      if (adding.trim()) onChange(adding.trim());
+      setAdding(null);
+    };
+    return (
+      <input
+        className="input cat-new"
+        autoFocus
+        aria-label="New category name"
+        placeholder="New category"
+        value={adding}
+        onChange={(e) => setAdding(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') done();
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            setAdding(null);
+          }
+        }}
+        onBlur={done}
+      />
+    );
+  }
+  return (
+    <select className="select" aria-label={label} title={label} value={value} onChange={(e) => (e.target.value === '\u0000new' ? setAdding('') : onChange(e.target.value))}>
+      <option value="">No category</option>
+      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+      <option value={'\u0000new'}>New category…</option>
+    </select>
+  );
+}
 
 /** Articles drawn at a time. */
 const PAGE = 150;
-
-const SUGGESTED = [
-  { title: 'Hacker News', url: 'https://hnrss.org/frontpage' },
-  { title: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
-  { title: 'BBC News', url: 'https://feeds.bbci.co.uk/news/rss.xml' },
-  { title: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index' },
-];
 
 function ago(iso: string | null, now = Date.now()): string {
   if (!iso) return '';
@@ -64,6 +106,9 @@ export function RssView({ shell }: { shell: Shell }) {
   const [help, setHelp] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmUnfollow, setConfirmUnfollow] = useState(false);
+  const [catalog, setCatalog] = useState(false);
+  const [catPref, setCatPref] = usePref<string>('rss-categories', JSON.stringify(STARTER_CATEGORIES));
+  const [addToPref, setAddToPref] = usePref<string>('rss-add-to', '');
   const [limit, setLimit] = useState(PAGE);
   // Articles read since the list was opened stay in an Unread list until the feed changes.
   const [keep, setKeep] = useState<Set<string>>(new Set());
@@ -84,10 +129,31 @@ export function RssView({ shell }: { shell: Shell }) {
   }, [lib.items]);
   const totalUnread = [...unreadBy.values()].reduce((a, b) => a + b, 0);
   const starred = lib.items.filter((i) => i.starred).length;
-  const feed = scope !== 'all' && scope !== 'starred' ? feedById.get(scope) : undefined;
+  const category = scope.startsWith('cat:') ? scope.slice(4) : null;
+  const feed = scope !== 'all' && scope !== 'starred' && category === null ? feedById.get(scope) : undefined;
   useEffect(() => {
-    if (scope !== 'all' && scope !== 'starred' && !feedById.has(scope)) setScope('all');
-  }, [scope, feedById]);
+    if (scope !== 'all' && scope !== 'starred' && category === null && !feedById.has(scope)) setScope('all');
+  }, [scope, category, feedById]);
+
+  const categories = useMemo(() => {
+    const names = new Set([...readList(catPref), ...lib.feeds.map((f) => f.folder).filter(Boolean)]);
+    return [...names].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [catPref, lib.feeds]);
+  const addCategory = (name: string) => {
+    if (!categories.some((c) => c.toLowerCase() === name.toLowerCase())) setCatPref(JSON.stringify([...readList(catPref), name]));
+  };
+  const known = (name: string) => categories.find((c) => c.toLowerCase() === name.toLowerCase()) ?? name;
+  // New feeds go to the category being looked at, else the last one picked.
+  const addTo = category ?? feed?.folder ?? (categories.includes(addToPref) ? addToPref : '');
+  const pickAddTo = (name: string) => {
+    addCategory(name);
+    setAddToPref(name);
+    if (category !== null) setScope(catScope(name));
+  };
+  const setFeedCategory = (f: RssFeed, name: string) => {
+    addCategory(name);
+    void store.updateFeed(f.id, { folder: known(name) }).then(() => toast({ text: name ? `${f.title} moved to ${known(name)}.` : `${f.title} has no category now.` }));
+  };
 
   const folders = useMemo(() => {
     const m = new Map<string, RssFeed[]>();
@@ -101,7 +167,11 @@ export function RssView({ shell }: { shell: Shell }) {
     const words = fold(query).split(/\s+/).filter(Boolean);
     return lib.items
       .filter((i) => {
-        if (scope === 'starred' ? !i.starred : scope !== 'all' && i.feedId !== scope) return false;
+        if (scope === 'starred') {
+          if (!i.starred) return false;
+        } else if (category !== null) {
+          if ((feedById.get(i.feedId)?.folder ?? '') !== category) return false;
+        } else if (scope !== 'all' && i.feedId !== scope) return false;
         if (show === 'unread' && scope !== 'starred' && i.read && !keep.has(i.id)) return false;
         if (words.length) {
           const hay = fold(`${i.title} ${i.summary} ${i.author} ${feedById.get(i.feedId)?.title ?? ''}`);
@@ -110,7 +180,7 @@ export function RssView({ shell }: { shell: Shell }) {
         return true;
       })
       .sort((a, b) => (b.publishedAt ?? b.fetchedAt).localeCompare(a.publishedAt ?? a.fetchedAt));
-  }, [lib.items, scope, show, keep, query, feedById]);
+  }, [lib.items, scope, category, show, keep, query, feedById]);
 
   const opened = openId ? lib.items.find((i) => i.id === openId) : undefined;
 
@@ -146,9 +216,9 @@ export function RssView({ shell }: { shell: Shell }) {
 
   const follow = async (text: string) => {
     try {
-      const { feed: f, existed } = await store.follow(text);
+      const { feed: f, existed } = await store.follow(text, known(addTo));
       setScope(f.id);
-      toast({ text: existed ? `You already follow ${f.title}.` : `Following ${f.title}.` });
+      toast({ text: existed ? `You already follow ${f.title}.` : `Following ${f.title}${addTo ? ` in ${known(addTo)}` : ''}.` });
       return true;
     } catch (e) {
       toast({ text: errorText(e) });
@@ -186,7 +256,7 @@ export function RssView({ shell }: { shell: Shell }) {
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (help || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (help || catalog || e.ctrlKey || e.metaKey || e.altKey) return;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       if (e.key === 'Enter' && t?.tagName === 'BUTTON') return;
       const at = items.findIndex((i) => i.id === cursor);
@@ -214,7 +284,8 @@ export function RssView({ shell }: { shell: Shell }) {
   });
 
   const busy = store.refreshing.size > 0;
-  const heading = scope === 'all' ? 'All feeds' : scope === 'starred' ? 'Starred' : feed?.title ?? '';
+  const heading = scope === 'all' ? 'All feeds' : scope === 'starred' ? 'Starred' : category !== null ? category || 'Uncategorized' : feed?.title ?? '';
+  const unreadIn = (folder: string) => lib.feeds.reduce((n, f) => n + (f.folder === folder ? unreadBy.get(f.id) ?? 0 : 0), 0);
   const navItem = (key: string, label: React.ReactNode, count: number, extra?: React.ReactNode) => (
     <button type="button" key={key} className="nav-item" aria-pressed={scope === key} onClick={() => setScope(key)}>
       <span className="label">{label}</span>
@@ -244,7 +315,7 @@ export function RssView({ shell }: { shell: Shell }) {
           </div>
           {folders.map(([folder, feeds]) => (
             <div className="nav-group" key={folder || '-'}>
-              <div className="nav-heading">{folder || 'Feeds'}</div>
+              {navItem(catScope(folder), <b className="ellipsis">{folder || 'Uncategorized'}</b>, unreadIn(folder))}
               {feeds.map((f) =>
                 navItem(
                   f.id,
@@ -256,22 +327,30 @@ export function RssView({ shell }: { shell: Shell }) {
             </div>
           ))}
           {!lib.feeds.length && <div className="hint" style={{ padding: '4px 10px' }}>Paste a site or feed address in the box at the top to follow it.</div>}
+          <div className="nav-group">
+            <button type="button" className="btn" onClick={() => setCatalog(true)}><IconRss size={14} />Discover feeds</button>
+          </div>
         </nav>
 
         <main className="main">
           <div className="rss-head">
             <div className="rss-title">
               {feed && <FeedIcon feed={feed} size={22} />}
-              {feed && renaming !== null ? (
+              {(feed || category) && renaming !== null ? (
                 <input
                   className="input"
                   autoFocus
-                  aria-label="Feed name"
+                  aria-label={feed ? 'Feed name' : 'Category name'}
                   value={renaming}
                   onChange={(e) => setRenaming(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && renaming.trim()) {
-                      void store.updateFeed(feed.id, { title: renaming.trim() });
+                      const to = renaming.trim();
+                      if (feed) void store.updateFeed(feed.id, { title: to });
+                      else if (category && to !== category) {
+                        setCatPref(JSON.stringify([...readList(catPref).filter((c) => c !== category), to]));
+                        void store.renameCategory(category, to).then(() => setScope(catScope(to)));
+                      }
                       setRenaming(null);
                     }
                     if (e.key === 'Escape') {
@@ -288,6 +367,22 @@ export function RssView({ shell }: { shell: Shell }) {
                 <button type="button" className="btn-link hint" onClick={() => void openExternal(feed.siteUrl || feed.url)}>{hostOf(feed.siteUrl || feed.url)}</button>
               )}
             </div>
+            {(feed || category !== null) && (
+              <div className="rss-cat-row">
+                {feed && (
+                  <label className="field-inline">
+                    Category
+                    <CategoryPicker label="Feed category" value={feed.folder} categories={categories} onChange={(name) => setFeedCategory(feed, name)} />
+                  </label>
+                )}
+                {category && (
+                  <>
+                    <button type="button" className="btn btn-sm" onClick={() => setRenaming(category)}><IconEdit size={13} />Rename category</button>
+                    <button type="button" className="btn btn-sm" onClick={() => void store.renameCategory(category, '').then(() => { setCatPref(JSON.stringify(readList(catPref).filter((c) => c !== category))); setScope(catScope('')); toast({ text: `Removed the ${category} category; its feeds have no category now.` }); })}><IconTrash size={13} />Remove category</button>
+                  </>
+                )}
+              </div>
+            )}
             {feed?.lastError && <div className="error" role="status">The last refresh failed: {feed.lastError}</div>}
             {feed?.description && <div className="hint">{feed.description}</div>}
           </div>
@@ -298,6 +393,12 @@ export function RssView({ shell }: { shell: Shell }) {
               <label htmlFor="rss-search" className="sr-only">Search articles</label>
               <input id="rss-search" className="input" type="search" placeholder="Search articles" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
+            {!feed && (
+              <label className="field-inline" title="Feeds you add from the box at the top go here">
+                New feeds go to
+                <CategoryPicker label="Category for new feeds" value={addTo} categories={categories} onChange={pickAddTo} />
+              </label>
+            )}
             {scope !== 'starred' && (
               <div className="seg" role="group" aria-label="Show">
                 <button type="button" aria-pressed={show === 'unread'} onClick={() => setShow('unread')}>Unread</button>
@@ -329,9 +430,7 @@ export function RssView({ shell }: { shell: Shell }) {
               <IconRss size={36} />
               <h2>Follow sites you read</h2>
               <span>Paste a site’s address or its feed in the box at the top. New articles come in every half hour while the app is open. You can also import an OPML file from another reader.</span>
-              <div className="rss-suggest">
-                {SUGGESTED.map((s) => <button type="button" key={s.url} className="btn" disabled={!isTauri()} onClick={() => void follow(s.url)}>{s.title}</button>)}
-              </div>
+              <button type="button" className="btn btn-primary" onClick={() => setCatalog(true)}>Discover feeds by category</button>
               {!isTauri() && <span className="hint">Feeds are read in the desktop app only.</span>}
             </div>
           ) : !items.length ? (
@@ -388,6 +487,7 @@ export function RssView({ shell }: { shell: Shell }) {
           }
         />
       )}
+      {catalog && <FeedCatalogDialog onClose={() => setCatalog(false)} onFollowed={addCategory} />}
       {help && <ShortcutsDialog onClose={() => setHelp(false)} />}
     </div>
   );
