@@ -4,13 +4,15 @@ import { LinksView } from './LinksView';
 import { MediaView } from './MediaView';
 import { RssView } from './RssView';
 import type { Bookmark } from './lib/types';
-import { MODES, useLibrary, usePref, useResolvedTheme, useStore, type Mode, type Shell, type ThemePref } from './state';
+import { MODES, PLACEHOLDER_MODES, useLibrary, usePref, useResolvedTheme, useStore, type Mode, type PlaceholderMode, type Shell, type ThemePref } from './state';
 import { YouTubeView } from './YouTubeView';
 
 /**
- * Switches between the tabs (YouTube, Links, Git, Wikipedia, RSS, Movies & TV), remembering the last one for the next launch.
+ * Switches between the tabs (YouTube, Links, Git, Wikipedia, RSS, Movies, TV Shows, Books, Games), remembering the last one for the next launch.
  * The video player lives here so picture in picture keeps playing across the switch.
  */
+const isPlaceholder = (m: Mode): m is PlaceholderMode => (PLACEHOLDER_MODES as Mode[]).includes(m);
+
 export default function App() {
   const store = useStore();
   const lib = useLibrary();
@@ -44,8 +46,8 @@ export default function App() {
         <YouTubeView shell={shell} />
       ) : mode === 'rss' ? (
         <RssView shell={shell} />
-      ) : mode === 'media' ? (
-        <MediaView shell={shell} />
+      ) : isPlaceholder(mode) ? (
+        <MediaView key={mode} shell={shell} kind={mode} />
       ) : (
         <LinksView key={mode} shell={shell} section={mode} />
       )}

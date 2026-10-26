@@ -1,7 +1,7 @@
 import { Dialog } from './Dialog';
 
 export const SHORTCUTS: { keys: string[]; action: string }[] = [
-  { keys: ['Ctrl', '1…6'], action: 'Tabs: YouTube, Links, Git, Wikipedia, RSS, Movies & TV' },
+  { keys: ['Ctrl', '1…9'], action: 'Tabs: YouTube, Links, Git, Wikipedia, RSS, Movies, TV Shows, Books, Games' },
   { keys: ['Ctrl', 'L'], action: 'Paste a link (focus the add box)' },
   { keys: ['Ctrl', 'Shift', 'N'], action: 'Add many links' },
   { keys: ['Ctrl', 'F'], action: 'Search' },

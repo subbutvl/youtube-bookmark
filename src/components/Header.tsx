@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { MODES, useLibrary, useLinks, useRss, type Mode } from '../state';
+import { MODES, PLACEHOLDER_MODES, useLibrary, useLinks, useRss, type Mode } from '../state';
 import { IconBookmark, IconDownload, IconMoon, IconPlus, IconSettings, IconSun, IconUpload } from './Icons';
 import { WindowControls } from './WindowControls';
 
@@ -38,7 +38,7 @@ export function Header({ mode, setMode, theme, toggleTheme, onQuickAdd, onAddMan
     if (unread) n.rss = unread;
     return n;
   }, [bookmarks, links, items]);
-  const canAdd = mode !== 'media';
+  const canAdd = !(PLACEHOLDER_MODES as Mode[]).includes(mode);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const t = text.trim();

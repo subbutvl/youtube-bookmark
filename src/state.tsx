@@ -51,14 +51,19 @@ export function useLibrary() {
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
-export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | 'media';
+export type PlaceholderMode = 'movies' | 'tv' | 'books' | 'games';
+export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | PlaceholderMode;
+export const PLACEHOLDER_MODES: PlaceholderMode[] = ['movies', 'tv', 'books', 'games'];
 export const MODES: { id: Mode; label: string }[] = [
   { id: 'youtube', label: 'YouTube' },
   { id: 'links', label: 'Links' },
   { id: 'git', label: 'Git' },
   { id: 'wiki', label: 'Wikipedia' },
   { id: 'rss', label: 'RSS' },
-  { id: 'media', label: 'Movies & TV' },
+  { id: 'movies', label: 'Movies' },
+  { id: 'tv', label: 'TV Shows' },
+  { id: 'books', label: 'Books' },
+  { id: 'games', label: 'Games' },
 ];
 
 /** What the app shell hands each library view. */
