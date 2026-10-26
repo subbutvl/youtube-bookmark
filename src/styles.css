@@ -568,5 +568,5 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .catalog-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .catalog-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
 .catalog-item .grow { flex: 1; min-width: 0; }
-.catalog-item .hint, .catalog-item b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-item .hint, .catalog-item .error, .catalog-item b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .catalog-list { grid-template-columns: minmax(0, 1fr); } }

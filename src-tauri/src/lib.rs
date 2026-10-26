@@ -179,21 +179,43 @@ struct FetchedText {
 
 const FEED_LIMIT: usize = 4 * 1024 * 1024;
 
+/// An error with its causes, so "error sending request" says why.
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut out = e.to_string();
+    let mut cur = e.source();
+    while let Some(c) = cur {
+        out.push_str(": ");
+        out.push_str(&c.to_string());
+        cur = c.source();
+    }
+    out
+}
+
+async fn get_feed(url: reqwest::Url, http1: bool) -> Result<reqwest::Response, reqwest::Error> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::limited(8));
+    if http1 {
+        builder = builder.http1_only();
+    }
+    builder
+        .build()?
+        .get(url)
+        .header("Accept", "application/rss+xml,application/atom+xml,application/xml;q=0.9,text/xml;q=0.9,text/html;q=0.8,*/*;q=0.5")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .send()
+        .await
+}
+
 #[tauri::command]
 async fn fetch_text(url: String) -> Result<FetchedText, String> {
     let parsed = web_url(&url)?;
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 TubeMarks")
-        .timeout(std::time::Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::limited(8))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut res = client
-        .get(parsed)
-        .header("Accept", "application/rss+xml,application/atom+xml,application/xml;q=0.9,text/xml;q=0.9,text/html;q=0.8,*/*;q=0.5")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    // Some servers drop HTTP/2 connections from non-browsers; retry once over HTTP/1.1.
+    let mut res = match get_feed(parsed.clone(), false).await {
+        Ok(r) => r,
+        Err(_) => get_feed(parsed, true).await.map_err(|e| error_chain(&e))?,
+    };
     let final_url = res.url().to_string();
     if !res.status().is_success() {
         return Err(format!("The site answered {}", res.status()));

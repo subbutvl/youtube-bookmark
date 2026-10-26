@@ -59,7 +59,7 @@ export function FeedCatalogDialog({ onClose, onFollowed }: { onClose: () => void
                     <div key={f.url} className="catalog-item">
                       <span className="grow">
                         <b>{f.title}</b>
-                        <span className={error ? 'error' : 'hint'} style={{ display: 'block' }}>{error ? `Couldn’t read it: ${error}` : f.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
+                        <span className={error ? 'error' : 'hint'} style={{ display: 'block' }} title={error}>{error ? `Couldn’t read it: ${error}` : f.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
                       </span>
                       <button type="button" className="btn btn-sm" disabled={following || busy.has(f.url) || !isTauri()} onClick={() => void followAll(category, [f])}>
                         {following ? 'Following' : busy.has(f.url) ? 'Adding…' : 'Follow'}

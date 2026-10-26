@@ -24,7 +24,8 @@ function normalizeInput(input: string): string {
   return u.toString();
 }
 
-const sameUrl = (a: string, b: string) => a.replace(/\/+$/, '').toLowerCase() === b.replace(/\/+$/, '').toLowerCase();
+const urlKey = (u: string) => u.trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '');
+const sameUrl = (a: string, b: string) => urlKey(a) === urlKey(b);
 
 /** The RSS tab's feeds and articles, kept in memory and written through to storage. */
 export class RssStore {
@@ -63,9 +64,13 @@ export class RssStore {
     const url = normalizeInput(input);
     const known = this.lib.feeds.find((f) => sameUrl(f.url, url) || (f.siteUrl && sameUrl(f.siteUrl, url)));
     if (known) return { feed: known, existed: true };
-    const { feedUrl, parsed } = await this.locate(url);
-    const again = this.lib.feeds.find((f) => sameUrl(f.url, feedUrl));
-    if (again) return { feed: again, existed: true };
+    const { feedUrl, finalUrl, parsed } = await this.locate(url);
+    const again = this.lib.feeds.find((f) => sameUrl(f.url, feedUrl) || sameUrl(f.url, finalUrl));
+    if (again) {
+      // Followed earlier under its redirected address: remember the one given, so it's recognized next time.
+      if (!sameUrl(again.url, feedUrl)) await this.updateFeedUrl(again.id, feedUrl);
+      return { feed: this.lib.feeds.find((f) => f.id === again.id)!, existed: true };
+    }
     const feed: RssFeed = {
       id: uid(),
       url: feedUrl,
@@ -85,14 +90,15 @@ export class RssStore {
   }
 
   /** The feed for an address: the address itself, a feed its page names, or a usual feed path on the site. */
-  private async locate(url: string): Promise<{ feedUrl: string; parsed: ParsedFeed }> {
+  private async locate(url: string): Promise<{ feedUrl: string; finalUrl: string; parsed: ParsedFeed }> {
     const page = await this.fetchText(url);
-    if (looksLikeFeed(page.body)) return { feedUrl: page.finalUrl || url, parsed: parseFeed(page.body, page.finalUrl || url) };
+    // Keep the address as given (redirects are followed on every refresh), so it matches catalogs and OPML.
+    if (looksLikeFeed(page.body)) return { feedUrl: url, finalUrl: page.finalUrl || url, parsed: parseFeed(page.body, page.finalUrl || url) };
     const candidates = [...discoverFeeds(page.body, page.finalUrl || url), ...guessFeedUrls(page.finalUrl || url)];
     for (const c of candidates) {
       try {
         const res = await this.fetchText(c);
-        if (looksLikeFeed(res.body)) return { feedUrl: res.finalUrl || c, parsed: parseFeed(res.body, res.finalUrl || c) };
+        if (looksLikeFeed(res.body)) return { feedUrl: c, finalUrl: res.finalUrl || c, parsed: parseFeed(res.body, res.finalUrl || c) };
       } catch {
         // Try the next one.
       }
@@ -201,6 +207,15 @@ export class RssStore {
     const feed = this.lib.feeds.find((f) => f.id === id);
     if (!feed) return;
     const next = { ...feed, ...patch };
+    await this.storage.saveFeeds([next]);
+    this.lib.feeds = this.lib.feeds.map((f) => (f.id === id ? next : f));
+    this.emit();
+  }
+
+  private async updateFeedUrl(id: string, url: string) {
+    const feed = this.lib.feeds.find((f) => f.id === id);
+    if (!feed || this.lib.feeds.some((f) => f.id !== id && sameUrl(f.url, url))) return;
+    const next = { ...feed, url };
     await this.storage.saveFeeds([next]);
     this.lib.feeds = this.lib.feeds.map((f) => (f.id === id ? next : f));
     this.emit();
