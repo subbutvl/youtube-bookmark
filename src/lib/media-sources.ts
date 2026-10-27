@@ -341,10 +341,14 @@ export function isMediaWikiUrl(url: string): boolean {
   }
 }
 
-/** A link that belongs in Movies and TV Shows: a movie site, or a Wikipedia article about a film or series. */
+/** Paths on movie sites that are one title's page (not the site's home or news pages). */
+const TITLE_PATHS = /^\/(title\/tt\d+|m\/[^/]+|tv\/[^/]+|[a-z]{2}\/(movie|tv-show|film|serie|tv-serie|movies|series)\/[^/]+|movie\/\d+|film\/[^/]+|shows?\/[^/]+|movies\/[^/]+)/i;
+
+/** A link that belongs in Movies and TV Shows: a title's page on a movie site, or a Wikipedia article about a film or series. Site home pages stay in Links. */
 export function isMediaUrl(url: string): boolean {
   try {
-    return isMediaHost(new URL(url).hostname) || isMediaWikiUrl(url);
+    const u = new URL(url);
+    return (isMediaHost(u.hostname) && TITLE_PATHS.test(u.pathname)) || isMediaWikiUrl(url);
   } catch {
     return false;
   }

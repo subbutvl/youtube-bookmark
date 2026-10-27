@@ -57,6 +57,12 @@ describe('parseMediaInput', () => {
     expect(isMediaUrl('https://en.wikipedia.org/wiki/Kantara_(2022_film)')).toBe(true);
     expect(isMediaUrl('https://en.wikipedia.org/wiki/Panchayat_(TV_series)')).toBe(true);
     expect(isMediaUrl('https://github.com/x/y')).toBe(false);
+    expect(isMediaUrl('https://www.imdb.com/?ref_=login')).toBe(false);
+    expect(isMediaUrl('https://www.justwatch.com/in/new')).toBe(false);
+    expect(isMediaUrl('https://www.justwatch.com/in/tv-show/panchayat')).toBe(true);
+    expect(isMediaUrl('https://www.rottentomatoes.com/m/inception')).toBe(true);
+    expect(isMediaUrl('https://www.themoviedb.org/movie/27205-inception')).toBe(true);
+    expect(isMediaUrl('https://letterboxd.com/film/inception/')).toBe(true);
   });
 });
 
