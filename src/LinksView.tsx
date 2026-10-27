@@ -164,12 +164,13 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
     }
     if (r.duplicates.length) parts.push(`${r.duplicates.length} already saved`);
     if (r.invalid.length) parts.push(`${r.invalid.length} not a web link`);
+    if (r.media.length) parts.push(`${r.media.length} movie or TV link${r.media.length === 1 ? '' : 's'} sent to Movies and TV Shows`);
     if (!parts.length) return;
     const firstDup = r.duplicates[0]?.existing;
     const away = elsewhere[0]?.section;
     toast({
       text: `${parts.join(', ')}.`,
-      action: !r.added.length && firstDup ? { label: 'Show it', run: () => showExisting(firstDup.id) } : away ? { label: `Show ${SECTION_LABELS[away]}`, run: () => shell.setMode(away) } : undefined,
+      action: !r.added.length && firstDup ? { label: 'Show it', run: () => showExisting(firstDup.id) } : away ? { label: `Show ${SECTION_LABELS[away]}`, run: () => shell.setMode(away) } : r.media.length && !r.added.length ? { label: 'Show Movies', run: () => shell.setMode('movies') } : undefined,
     }, 6000);
   }, [toast, showExisting, section, shell]);
 

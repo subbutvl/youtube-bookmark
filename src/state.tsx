@@ -1,21 +1,46 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { LibraryStore } from './lib/library';
 import type { LinkStore } from './lib/link-store';
+import type { MediaStore } from './lib/media-store';
 import type { RssStore } from './lib/rss-store';
 import type { Category, Tag } from './lib/types';
 
 const StoreContext = createContext<LibraryStore | null>(null);
 const LinkStoreContext = createContext<LinkStore | null>(null);
 const RssStoreContext = createContext<RssStore | null>(null);
+const MediaStoreContext = createContext<MediaStore | null>(null);
 
-export function StoreProvider({ store, linkStore, rssStore, children }: { store: LibraryStore; linkStore: LinkStore; rssStore: RssStore; children: ReactNode }) {
+export function StoreProvider({ store, linkStore, rssStore, mediaStore, children }: { store: LibraryStore; linkStore: LinkStore; rssStore: RssStore; mediaStore: MediaStore; children: ReactNode }) {
   return (
     <StoreContext.Provider value={store}>
       <LinkStoreContext.Provider value={linkStore}>
-        <RssStoreContext.Provider value={rssStore}>{children}</RssStoreContext.Provider>
+        <RssStoreContext.Provider value={rssStore}>
+          <MediaStoreContext.Provider value={mediaStore}>{children}</MediaStoreContext.Provider>
+        </RssStoreContext.Provider>
       </LinkStoreContext.Provider>
     </StoreContext.Provider>
   );
+}
+
+export function useMediaStore(): MediaStore {
+  const s = useContext(MediaStoreContext);
+  if (!s) throw new Error('useMediaStore outside StoreProvider');
+  return s;
+}
+
+export function useMedia() {
+  const store = useMediaStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+
+/** Country whose streaming platforms are shown for movies and TV shows. */
+export const MEDIA_COUNTRY_PREF = 'mediaCountry';
+export function mediaCountry(): string {
+  try {
+    return localStorage.getItem(`tubemarks.${MEDIA_COUNTRY_PREF}`) || 'IN';
+  } catch {
+    return 'IN';
+  }
 }
 
 export function useRssStore(): RssStore {
@@ -51,9 +76,10 @@ export function useLibrary() {
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
-export type PlaceholderMode = 'movies' | 'tv' | 'books' | 'games';
-export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | PlaceholderMode;
-export const PLACEHOLDER_MODES: PlaceholderMode[] = ['movies', 'tv', 'books', 'games'];
+export type PlaceholderMode = 'books' | 'games';
+export type MediaMode = 'movies' | 'tv';
+export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | MediaMode | PlaceholderMode;
+export const PLACEHOLDER_MODES: PlaceholderMode[] = ['books', 'games'];
 export const MODES: { id: Mode; label: string }[] = [
   { id: 'youtube', label: 'YouTube' },
   { id: 'links', label: 'Links' },

@@ -140,3 +140,10 @@ export async function fetchText(url: string): Promise<{ finalUrl: string; conten
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke('fetch_text', { url });
 }
+
+/** Posts JSON and returns the answer as text (desktop app only). */
+export async function postJson(url: string, body: string): Promise<string> {
+  if (!isTauri()) throw new Error('Movie and TV details are looked up in the desktop app only.');
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<string>('post_json', { url, body });
+}

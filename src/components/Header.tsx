@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { MODES, PLACEHOLDER_MODES, useLibrary, useLinks, useRss, type Mode } from '../state';
+import { MODES, PLACEHOLDER_MODES, useLibrary, useLinks, useMedia, useRss, type Mode } from '../state';
 import { IconBookmark, IconList, IconMoon, IconPlus, IconSettings, IconSun } from './Icons';
 import { WindowControls } from './WindowControls';
 
@@ -21,6 +21,8 @@ const PLACEHOLDERS: Partial<Record<Mode, string>> = {
   git: 'Paste a GitHub, GitLab or other repository link and press Enter',
   wiki: 'Paste a Wikipedia link and press Enter',
   rss: 'Paste a feed or a site’s address to subscribe, and press Enter',
+  movies: 'Type a movie name (any language) or paste an IMDb, Wikipedia or JustWatch link',
+  tv: 'Type a TV show name (any language) or paste an IMDb, Wikipedia or JustWatch link',
 };
 
 /** The title bar shared by both libraries: mode switch, add box, import/export, help, settings and window buttons. */
@@ -29,13 +31,15 @@ export function Header({ mode, setMode, theme, toggleTheme, onQuickAdd, onAddMan
   const bookmarks = useLibrary().bookmarks.length;
   const links = useLinks().links;
   const items = useRss().items;
+  const media = useMedia().items;
   const counts = useMemo(() => {
-    const n: Partial<Record<Mode, number>> = { youtube: bookmarks, links: 0, git: 0, wiki: 0 };
+    const n: Partial<Record<Mode, number>> = { youtube: bookmarks, links: 0, git: 0, wiki: 0, movies: 0, tv: 0 };
+    for (const m of media) n[m.kind === 'tv' ? 'tv' : 'movies']! += 1;
     for (const l of links) n[l.section] = (n[l.section] ?? 0) + 1;
     const unread = items.reduce((k, i) => k + (i.read ? 0 : 1), 0);
     if (unread) n.rss = unread;
     return n;
-  }, [bookmarks, links, items]);
+  }, [bookmarks, links, items, media]);
   const canAdd = !(PLACEHOLDER_MODES as Mode[]).includes(mode);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -67,7 +71,7 @@ export function Header({ mode, setMode, theme, toggleTheme, onQuickAdd, onAddMan
           onChange={(e) => setText(e.target.value)}
         />
         <button type="submit" className="btn btn-primary" disabled={!canAdd}><IconPlus /><span className="btn-label">Add</span></button>
-        <button type="button" className="btn" disabled={!canAdd || mode === 'rss'} onClick={() => { onAddMany(text.trim()); setText(''); }} title="Add several links at once (Ctrl+Shift+N)" aria-label="Add many"><IconList size={15} /><span className="btn-label">Add many</span></button>
+        <button type="button" className="btn" disabled={!canAdd || mode === 'rss'} onClick={() => { onAddMany(text.trim()); setText(''); }} title="Add several at once (Ctrl+Shift+N)" aria-label="Add many"><IconList size={15} /><span className="btn-label">Add many</span></button>
       </form>
       <div className="topbar-actions" data-tauri-drag-region>
         <button

@@ -67,6 +67,7 @@ export function LinkImportDialog({ onClose, onImported }: Props) {
       const yr = file.parsed.youtube.length && (mode === 'replace' || addNew) ? await ytStore.importItems(file.parsed.youtube, 'merge') : { added: 0, duplicates: 0 };
       const parts = r.added || !r.updated ? [`Imported ${r.added.toLocaleString()} link${r.added === 1 ? '' : 's'}`] : [];
       if (yr.added) parts.push(`${yr.added.toLocaleString()} YouTube bookmark${yr.added === 1 ? '' : 's'}`);
+      if (r.media) parts.push(`sent ${r.media.toLocaleString()} movie or TV link${r.media === 1 ? '' : 's'} to Movies and TV Shows`);
       const skipped = r.duplicates + yr.duplicates + file.parsed.repeated;
       if (r.updated) parts.push(`${parts.length ? 'moved' : 'Moved'} ${r.updated.toLocaleString()} saved link${r.updated === 1 ? '' : 's'} into their folders`);
       toast({ text: `${parts.join(', ')}${skipped ? `. Skipped ${skipped.toLocaleString()} duplicates` : ''}.` }, 10000);

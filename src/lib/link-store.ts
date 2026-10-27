@@ -1,5 +1,6 @@
 import { LINK_FLAGS, QUICK_LAUNCH_MAX, sectionFor, type Link, type LinkFlag, type LinkLibrary, type LinkSection } from './link-types';
 import { fallbackFavicon, parseLink } from './link-url';
+import { isMediaUrl } from './media-sources';
 import type { PageMeta } from './page-meta';
 import type { LinkStorage } from './storage';
 import { CATEGORY_COLORS, type Category, type Tag } from './types';
@@ -12,6 +13,8 @@ export interface LinkAddResult {
   added: Link[];
   duplicates: { input: string; existing: Link }[];
   invalid: string[];
+  /** Movie and TV links, handed to the Movies and TV Shows tabs instead of being saved here. */
+  media: string[];
 }
 
 /** One link to import, from a backup, a CSV, a browser's bookmarks or plain text. */
@@ -51,6 +54,9 @@ export class LinkStore {
   private fetching = new Set<string>();
   /** Links whose details are being fetched in bulk, for the progress banner. */
   progress: { done: number; total: number } | null = null;
+
+  /** Takes movie and TV links (IMDb, Rotten Tomatoes, film articles on Wikipedia…) so they never land in Links. */
+  mediaSink: ((urls: string[]) => void) | null = null;
 
   constructor(private readonly storage: LinkStorage, private readonly fetchMeta: MetaFetcher) {}
 
@@ -201,13 +207,17 @@ export class LinkStore {
 
   /** Adds every web link in `text` (or the given list). Duplicates are reported, never stored. Details are fetched in the background. */
   async addUrls(input: string | string[], opts: { categoryId?: string | null; tagNames?: string[] } = {}): Promise<LinkAddResult> {
-    const result: LinkAddResult = { added: [], duplicates: [], invalid: [] };
+    const result: LinkAddResult = { added: [], duplicates: [], invalid: [], media: [] };
     const tags = opts.tagNames?.length ? await this.ensureTags(opts.tagNames) : [];
     const batch = new Map<string, Link>();
     for (const raw of typeof input === 'string' ? splitUrls(input) : input) {
       const p = parseLink(raw);
       if (!p) {
         result.invalid.push(raw);
+        continue;
+      }
+      if (this.mediaSink && isMediaUrl(p.url)) {
+        result.media.push(p.url);
         continue;
       }
       const existing = this.findByKey(p.dedupeKey) ?? batch.get(p.dedupeKey);
@@ -242,6 +252,7 @@ export class LinkStore {
       });
     }
     result.added = [...batch.values()];
+    if (result.media.length) this.mediaSink?.(result.media);
     if (result.added.length) {
       await this.storage.saveLinks(result.added);
       this.lib.links = [...this.lib.links, ...result.added];
@@ -453,7 +464,12 @@ export class LinkStore {
     };
     const folderTagNames = new Set<string>();
     const topFolders = new Set<string>();
+    const media: string[] = [];
     for (const it of items) {
+      if (this.mediaSink && isMediaUrl(it.url) && !this.findByKey(it.dedupeKey)) {
+        if (!(opts.skipNew && mode === 'merge')) media.push(it.url);
+        continue;
+      }
       const existing = this.findByKey(it.dedupeKey) ?? fresh.find((l) => l.dedupeKey === it.dedupeKey);
       if (existing) {
         duplicates++;
@@ -501,7 +517,8 @@ export class LinkStore {
     this.lib.links = [...this.replaceAll(updated), ...fresh];
     if (updated.length) await this.dropUnused(folderTagNames, topFolders);
     this.emit();
-    return { added: fresh.length, duplicates, updated: updated.length };
+    if (media.length) this.mediaSink?.(media);
+    return { added: fresh.length, duplicates, updated: updated.length, media: media.length };
   }
 
   private replaceAll(changed: Link[]): Link[] {

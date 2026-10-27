@@ -61,6 +61,7 @@ export function AddDialog({ initialText = '', onClose, onDone, onShowExisting }:
       if (webLinks.length) {
         const lr = await linkStore.addUrls(webLinks, { tagNames: tags });
         if (lr.added.length) toast({ text: `Saved ${lr.added.length} other link${lr.added.length === 1 ? '' : 's'} to Links.` });
+        if (lr.media.length) toast({ text: `Sent ${lr.media.length} movie or TV link${lr.media.length === 1 ? '' : 's'} to Movies and TV Shows.` });
       }
       const r = await store.addUrls(`${rows.filter((x) => x.kind !== 'link').map((x) => x.input).join('\n')}\n${extra}`, { categoryId: categoryId || null, tagNames: tags });
       onDone(r);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { VideoPlayer, type PlayerMode } from './components/VideoPlayer';
 import { LinksView } from './LinksView';
 import { MediaView } from './MediaView';
+import { MoviesView } from './MoviesView';
 import { RssView } from './RssView';
 import type { Bookmark } from './lib/types';
 import { MODES, PLACEHOLDER_MODES, useLibrary, usePref, useResolvedTheme, useStore, type Mode, type PlaceholderMode, type Shell, type ThemePref } from './state';
@@ -46,6 +47,8 @@ export default function App() {
         <YouTubeView shell={shell} />
       ) : mode === 'rss' ? (
         <RssView shell={shell} />
+      ) : mode === 'movies' || mode === 'tv' ? (
+        <MoviesView key={mode} shell={shell} kind={mode === 'tv' ? 'tv' : 'movie'} />
       ) : isPlaceholder(mode) ? (
         <MediaView key={mode} shell={shell} kind={mode} />
       ) : (

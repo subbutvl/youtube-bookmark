@@ -137,6 +137,10 @@ export function YouTubeView({ shell }: { shell: Shell }) {
     try {
       if (routed.links.length) {
         const r = await linkStore.addUrls(routed.links);
+        if (r.media.length) {
+          toast({ text: 'That’s a movie or TV link, so it’s saved in Movies and TV Shows.', action: { label: 'Show Movies', run: () => shell.setMode('movies') } }, 6000);
+          return true;
+        }
         const l = r.added[0] ?? r.duplicates[0]?.existing;
         const tab = l ? SECTION_LABELS[l.section] : 'Links';
         toast({ text: r.added.length ? `Saved to ${tab} (it isn’t a YouTube link).` : `That link is already in ${tab}.`, action: l ? { label: `Show ${tab}`, run: () => shell.setMode(l.section) } : undefined }, 6000);

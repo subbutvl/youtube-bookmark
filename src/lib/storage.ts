@@ -1,4 +1,5 @@
 import { sectionFor, type Link, type LinkLibrary } from './link-types';
+import type { MediaItem, MediaLibrary } from './media-types';
 import type { RssFeed, RssItem, RssLibrary } from './rss-types';
 import type { Bookmark, Category, Library, Tag } from './types';
 
@@ -19,6 +20,14 @@ export interface Storage {
   links: LinkStorage;
   /** Feeds and their articles for the RSS tab. */
   rss: RssStorage;
+  /** Movies and TV shows. */
+  media: MediaStorage;
+}
+
+export interface MediaStorage {
+  load(): Promise<MediaLibrary>;
+  save(items: MediaItem[]): Promise<void>;
+  delete(ids: string[]): Promise<void>;
 }
 
 export interface RssStorage {
@@ -56,9 +65,11 @@ export class MemoryStorage implements Storage {
   private lib: Library = { bookmarks: [], categories: [], tags: [] };
   private linkLib: LinkLibrary = { links: [], categories: [], tags: [] };
   private rssLib: RssLibrary = { feeds: [], items: [] };
+  private mediaLib: MediaLibrary = { items: [] };
   private settings: Record<string, string> = {};
   readonly links: LinkStorage;
   readonly rss: RssStorage;
+  readonly media: MediaStorage;
 
   constructor(private readonly persistKey?: string) {
     if (persistKey && typeof localStorage !== 'undefined') {
@@ -70,6 +81,7 @@ export class MemoryStorage implements Storage {
           this.settings = saved.settings;
           this.linkLib = saved.linkLib ?? this.linkLib;
           this.rssLib = saved.rssLib ?? this.rssLib;
+          this.mediaLib = saved.mediaLib ?? this.mediaLib;
           // Preview data from before tabs and manual groups.
           this.linkLib.links = this.linkLib.links.map((l) => ({ ...l, section: l.section ?? sectionFor(l.domain), groupName: l.groupName ?? null }));
         }
@@ -79,12 +91,13 @@ export class MemoryStorage implements Storage {
     }
     this.links = this.makeLinkStorage();
     this.rss = this.makeRssStorage();
+    this.media = this.makeMediaStorage();
   }
 
   private persist() {
     if (!this.persistKey || typeof localStorage === 'undefined') return;
     try {
-      localStorage.setItem(this.persistKey, JSON.stringify({ lib: this.lib, settings: this.settings, linkLib: this.linkLib, rssLib: this.rssLib }));
+      localStorage.setItem(this.persistKey, JSON.stringify({ lib: this.lib, settings: this.settings, linkLib: this.linkLib, rssLib: this.rssLib, mediaLib: this.mediaLib }));
     } catch {
       // Storage full or blocked; the preview keeps working in memory.
     }
@@ -92,6 +105,24 @@ export class MemoryStorage implements Storage {
 
   private upsert<T extends { id: string }>(list: T[], items: T[]): T[] {
     return upsert(list, items);
+  }
+
+  private makeMediaStorage(): MediaStorage {
+    const self = this;
+    return {
+      async load() {
+        return structuredClone(self.mediaLib);
+      },
+      async save(items) {
+        self.mediaLib.items = upsert(self.mediaLib.items, items);
+        self.persist();
+      },
+      async delete(ids) {
+        const drop = new Set(ids);
+        self.mediaLib.items = self.mediaLib.items.filter((i) => !drop.has(i.id));
+        self.persist();
+      },
+    };
   }
 
   private makeRssStorage(): RssStorage {
@@ -252,9 +283,11 @@ function chunk<T>(xs: T[], size: number): T[][] {
 export class SqliteStorage implements Storage {
   readonly links: LinkStorage;
   readonly rss: RssStorage;
+  readonly media: MediaStorage;
   private constructor(private readonly db: SqlDb) {
     this.links = new SqliteLinkStorage(db);
     this.rss = new SqliteRssStorage(db);
+    this.media = new SqliteMediaStorage(db);
   }
 
   static async open(): Promise<SqliteStorage> {
@@ -579,6 +612,85 @@ class SqliteRssStorage implements RssStorage {
   async deleteItems(ids: string[]) {
     for (const batch of chunk(ids, 400)) {
       await this.db.execute(`DELETE FROM rss_items WHERE id IN (${batch.map((_, i) => `$${i + 1}`).join(', ')})`, batch);
+    }
+  }
+}
+
+const MEDIA_COLUMNS = [
+  'id', 'kind', 'title', 'original_title', 'year', 'language', 'synopsis', 'poster_url', 'imdb_id', 'imdb_rating', 'imdb_votes', 'rt_score',
+  'genres', 'runtime', 'seasons', 'trailer_id', 'links', 'watch', 'justwatch_path', 'status', 'my_rating', 'notes',
+  'created_at', 'updated_at', 'fetched_at', 'metadata_status',
+] as const;
+
+function mediaValues(m: MediaItem): unknown[] {
+  return [
+    m.id, m.kind, m.title, m.originalTitle, m.year, m.language, m.synopsis, m.posterUrl, m.imdbId, m.imdbRating, m.imdbVotes, m.rtScore,
+    JSON.stringify(m.genres), m.runtime, m.seasons, m.trailerId, JSON.stringify(m.links), JSON.stringify(m.watch), m.justwatchPath, m.status, m.myRating, m.notes,
+    m.createdAt, m.updatedAt, m.fetchedAt, m.metadataStatus,
+  ];
+}
+
+function jsonList<T>(text: unknown): T[] {
+  try {
+    const v = JSON.parse(String(text ?? '[]'));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Movies and TV shows (migration 0006). Lists (genres, links, platforms) are stored as JSON. */
+class SqliteMediaStorage implements MediaStorage {
+  constructor(private readonly db: SqlDb) {}
+
+  async load(): Promise<MediaLibrary> {
+    const rows = await this.db.select<Row[]>('SELECT * FROM media_items');
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        title: r.title,
+        originalTitle: r.original_title,
+        year: r.year,
+        language: r.language,
+        synopsis: r.synopsis,
+        posterUrl: r.poster_url,
+        imdbId: r.imdb_id,
+        imdbRating: r.imdb_rating,
+        imdbVotes: r.imdb_votes,
+        rtScore: r.rt_score,
+        genres: jsonList<string>(r.genres),
+        runtime: r.runtime,
+        seasons: r.seasons,
+        trailerId: r.trailer_id,
+        links: jsonList(r.links),
+        watch: jsonList(r.watch),
+        justwatchPath: r.justwatch_path,
+        status: r.status,
+        myRating: r.my_rating,
+        notes: r.notes,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        fetchedAt: r.fetched_at,
+        metadataStatus: r.metadata_status,
+      })),
+    };
+  }
+
+  async save(items: MediaItem[]) {
+    const updates = MEDIA_COLUMNS.filter((c) => c !== 'id' && c !== 'created_at').map((c) => `${c} = excluded.${c}`).join(', ');
+    // 30 rows × 26 columns stays under SQLite's 999-parameter limit.
+    for (const batch of chunk(items, 30)) {
+      await this.db.execute(
+        `INSERT INTO media_items (${MEDIA_COLUMNS.join(', ')}) VALUES ${placeholders(batch.length, MEDIA_COLUMNS.length)} ON CONFLICT(id) DO UPDATE SET ${updates}`,
+        batch.flatMap(mediaValues),
+      );
+    }
+  }
+
+  async delete(ids: string[]) {
+    for (const batch of chunk(ids, 400)) {
+      await this.db.execute(`DELETE FROM media_items WHERE id IN (${batch.map((_, i) => `$${i + 1}`).join(', ')})`, batch);
     }
   }
 }

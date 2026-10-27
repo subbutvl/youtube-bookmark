@@ -236,6 +236,31 @@ async fn fetch_text(url: String) -> Result<FetchedText, String> {
     Ok(FetchedText { final_url, content_type, body: String::from_utf8_lossy(&body).into_owned() })
 }
 
+/// Posts a JSON body and returns the answer as text (movie and TV lookups; JustWatch's API takes POST only).
+#[tauri::command]
+async fn post_json(url: String, body: String) -> Result<String, String> {
+    let parsed = web_url(&url)?;
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .post(parsed)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| error_chain(&e))?;
+    let status = res.status();
+    let text = res.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() && !text.trim_start().starts_with('{') {
+        return Err(format!("The site answered {status}"));
+    }
+    Ok(text)
+}
+
 /// A browser's own bookmarks file (Chrome, Edge, Brave and other Chromium browsers).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -311,6 +336,12 @@ fn migrations() -> Vec<Migration> {
         description: "rss feeds",
         sql: include_str!("../migrations/0005_rss.sql"),
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 6,
+        description: "movies and tv shows",
+        sql: include_str!("../migrations/0006_media.sql"),
+        kind: MigrationKind::Up,
     }]
 }
 
@@ -372,7 +403,7 @@ pub fn run() {
                 w.app_handle().exit(0);
             }
         })
-        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, show_channel_view, move_channel_view, close_channel_view, channel_view_nav, fetch_page, fetch_text, browser_bookmark_files])
+        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file, read_legacy_db, show_channel_view, move_channel_view, close_channel_view, channel_view_nav, fetch_page, fetch_text, post_json, browser_bookmark_files])
         .run(tauri::generate_context!())
         .expect("error while running TubeMarks");
 }

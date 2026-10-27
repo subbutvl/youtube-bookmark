@@ -3,10 +3,11 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { LibraryStore } from './lib/library';
 import { LinkStore } from './lib/link-store';
-import { fetchPageMeta, fetchText } from './lib/platform';
+import { MediaStore } from './lib/media-store';
+import { fetchPageMeta, fetchText, postJson } from './lib/platform';
 import { RssStore } from './lib/rss-store';
 import { isTauri, MemoryStorage, SqliteStorage } from './lib/storage';
-import { StoreProvider, ToastProvider } from './state';
+import { mediaCountry, StoreProvider, ToastProvider } from './state';
 import './styles.css';
 
 const REFRESH_MS = 30 * 60_000;
@@ -19,7 +20,11 @@ async function start() {
     const store = new LibraryStore(storage, undefined, import.meta.env.VITE_YOUTUBE_API_KEY ?? '');
     const linkStore = new LinkStore(storage.links, fetchPageMeta);
     const rssStore = new RssStore(storage.rss, fetchText);
-    await Promise.all([store.init(), linkStore.init(), rssStore.init()]);
+    const mediaFetchers = isTauri() ? { get: async (url: string) => (await fetchText(url)).body, postJson } : null;
+    const mediaStore = new MediaStore(storage.media, mediaFetchers, mediaCountry);
+    // Movie and TV links pasted or imported anywhere go to the Movies and TV Shows tabs, never to Links.
+    linkStore.mediaSink = (urls) => void mediaStore.addLinks(urls);
+    await Promise.all([store.init(), linkStore.init(), rssStore.init(), mediaStore.init()]);
     // Feeds are read again every half hour while the app is open (and at start, if stale).
     if (isTauri()) {
       void rssStore.refreshAll(REFRESH_MS);
@@ -27,7 +32,7 @@ async function start() {
     }
     root.render(
       <StrictMode>
-        <StoreProvider store={store} linkStore={linkStore} rssStore={rssStore}>
+        <StoreProvider store={store} linkStore={linkStore} rssStore={rssStore} mediaStore={mediaStore}>
           <ToastProvider>
             <App />
           </ToastProvider>
