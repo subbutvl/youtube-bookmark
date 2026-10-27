@@ -460,7 +460,7 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .table-wrap { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: clip; container-type: inline-size; flex: none; }
 /* Fixed layout: the title takes what the other columns leave, so the table never scrolls sideways. */
 .link-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
-.link-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--surface); overflow: hidden; text-overflow: ellipsis; }
+.link-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; z-index: 2; background: var(--surface); overflow: hidden; text-overflow: ellipsis; }
 .link-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
 .link-table tr:last-child td { border-bottom: 0; }
 .link-table tr.selected td { background: color-mix(in srgb, var(--focus) 10%, transparent); }
@@ -570,3 +570,9 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .catalog-item .grow { flex: 1; min-width: 0; }
 .catalog-item .hint, .catalog-item .error, .catalog-item b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .catalog-list { grid-template-columns: minmax(0, 1fr); } }
+
+/* Table view: the page stays put and only the table's rows scroll. */
+.main.table-mode { overflow: hidden; }
+.main.table-mode > * { flex-shrink: 0; }
+.main.table-mode .table-wrap { flex: 1 1 auto; min-height: 220px; overflow: auto; }
+.table-foot { display: flex; justify-content: center; padding: 12px; border-top: 1px solid var(--border); }

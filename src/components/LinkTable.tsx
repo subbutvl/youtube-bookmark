@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { FLAG_LABELS, LINK_FLAGS, type Link, type LinkFlag } from '../lib/link-types';
 import { linkTitle, type LinkRow } from '../lib/link-view';
 import type { Category, Tag } from '../lib/types';
@@ -25,6 +25,8 @@ interface Props {
   onTogglePin: (l: Link) => void;
   onTagClick: (id: string) => void;
   onQuickEdit: (id: string, kind: 'category' | 'tags', el: HTMLElement) => void;
+  /** Shown under the rows, inside the scrolling box (e.g. Show more). */
+  footer?: ReactNode;
 }
 
 /** Links as rows: one line each, with sites that have several links folded into an expandable row. */
@@ -122,6 +124,7 @@ export function LinkTable(p: Props) {
           })}
         </tbody>
       </table>
+      {p.footer && <div className="table-foot">{p.footer}</div>}
     </div>
   );
 }

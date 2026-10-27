@@ -17,6 +17,8 @@ export interface LinkViewState {
   domain: string | null;
   /** One of the user's own groups. */
   group: string | null;
+  /** Only rows that are groups (yours or same-site), or only the links outside any group. */
+  grouping: 'all' | 'grouped' | 'ungrouped';
   added: AddedWithin;
   sort: LinkSortKey;
 }
@@ -30,6 +32,7 @@ export const DEFAULT_LINK_VIEW: LinkViewState = {
   flags: [],
   domain: null,
   group: null,
+  grouping: 'all',
   added: 'all',
   sort: 'added-desc',
 };

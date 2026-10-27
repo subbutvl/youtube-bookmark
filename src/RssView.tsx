@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { IconEdit, IconExternal, IconLink, IconRefresh, IconRss, IconSearch, IconStar, IconTrash } from './components/Icons';
 import { FeedCatalogDialog } from './components/FeedCatalogDialog';
+import { SettingsDialog } from './components/SettingsDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { ShowMore } from './components/ShowMore';
 import { WebDrawer } from './components/WebDrawer';
 import { STARTER_CATEGORIES } from './lib/feed-catalog';
 import { SECTION_LABELS } from './lib/link-types';
@@ -10,7 +12,7 @@ import { openExternal, pickTextFile, saveTextFile } from './lib/platform';
 import type { RssFeed, RssItem } from './lib/rss-types';
 import { isTauri } from './lib/storage';
 import { fold } from './lib/view';
-import { errorText, useLinkStore, usePref, useRss, useRssStore, useToast, type Shell } from './state';
+import { errorText, useLinkStore, usePref, useRss, useRssStore, useToast, type Density, type Shell } from './state';
 
 /** All, Starred, a feed's id, or a category as `cat:<name>` ('cat:' is Uncategorized). */
 type Scope = 'all' | 'starred' | string;
@@ -101,12 +103,15 @@ export function RssView({ shell }: { shell: Shell }) {
   const [scope, setScope] = useState<Scope>('all');
   const [show, setShow] = usePref<'unread' | 'all'>('rss-show', 'unread');
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [openId, setOpenId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [help, setHelp] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmUnfollow, setConfirmUnfollow] = useState(false);
   const [catalog, setCatalog] = useState(false);
+  const [settings, setSettings] = useState(false);
+  const [density, setDensity] = usePref<Density>('density', 'comfortable');
   const [catPref, setCatPref] = usePref<string>('rss-categories', JSON.stringify(STARTER_CATEGORIES));
   const [addToPref, setAddToPref] = usePref<string>('rss-add-to', '');
   const [limit, setLimit] = useState(PAGE);
@@ -164,7 +169,7 @@ export function RssView({ shell }: { shell: Shell }) {
   }, [lib.feeds]);
 
   const items = useMemo(() => {
-    const words = fold(query).split(/\s+/).filter(Boolean);
+    const words = fold(deferredQuery).split(/\s+/).filter(Boolean);
     return lib.items
       .filter((i) => {
         if (scope === 'starred') {
@@ -180,7 +185,7 @@ export function RssView({ shell }: { shell: Shell }) {
         return true;
       })
       .sort((a, b) => (b.publishedAt ?? b.fetchedAt).localeCompare(a.publishedAt ?? a.fetchedAt));
-  }, [lib.items, scope, category, show, keep, query, feedById]);
+  }, [lib.items, scope, category, show, keep, deferredQuery, feedById]);
 
   const opened = openId ? lib.items.find((i) => i.id === openId) : undefined;
 
@@ -256,7 +261,7 @@ export function RssView({ shell }: { shell: Shell }) {
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (help || catalog || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (help || catalog || settings || e.ctrlKey || e.metaKey || e.altKey) return;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       if (e.key === 'Enter' && t?.tagName === 'BUTTON') return;
       const at = items.findIndex((i) => i.id === cursor);
@@ -303,9 +308,8 @@ export function RssView({ shell }: { shell: Shell }) {
         toggleTheme={() => setThemePref(theme === 'dark' ? 'light' : 'dark')}
         onQuickAdd={follow}
         onAddMany={() => {}}
-        onImport={importOpml}
-        onExport={exportOpml}
         onHelp={() => setHelp(true)}
+        onSettings={() => setSettings(true)}
       />
       <div className="body">
         <nav className="sidebar" aria-label="Feeds">
@@ -467,7 +471,7 @@ export function RssView({ shell }: { shell: Shell }) {
                   </article>
                 );
               })}
-              {items.length > limit && <button type="button" className="btn" style={{ alignSelf: 'center' }} onClick={() => setLimit((l) => l + PAGE)}>Show more ({(items.length - limit).toLocaleString()} left)</button>}
+              {items.length > limit && <ShowMore left={items.length - limit} noun="articles" onMore={() => setLimit((l) => l + PAGE)} />}
             </div>
           )}
         </main>
@@ -485,6 +489,21 @@ export function RssView({ shell }: { shell: Shell }) {
               <button type="button" className="btn btn-sm" onClick={() => void saveToLinks(opened)}><IconLink size={14} />Save to Links</button>
             </>
           }
+        />
+      )}
+      {settings && (
+        <SettingsDialog
+          onClose={() => setSettings(false)}
+          theme={shell.themePref}
+          setTheme={setThemePref}
+          density={density}
+          setDensity={setDensity}
+          data={{
+            label: 'Import and export feeds',
+            hint: 'OPML files, which other feed readers use too.',
+            onImport: () => { setSettings(false); void importOpml(); },
+            onExport: () => { setSettings(false); void exportOpml(); },
+          }}
         />
       )}
       {catalog && <FeedCatalogDialog onClose={() => setCatalog(false)} onFollowed={addCategory} />}

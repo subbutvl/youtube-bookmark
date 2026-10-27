@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { MODES, PLACEHOLDER_MODES, useLibrary, useLinks, useRss, type Mode } from '../state';
-import { IconBookmark, IconList, IconDownload, IconMoon, IconPlus, IconSettings, IconSun, IconUpload } from './Icons';
+import { IconBookmark, IconList, IconMoon, IconPlus, IconSettings, IconSun } from './Icons';
 import { WindowControls } from './WindowControls';
 
 interface Props {
@@ -11,8 +11,6 @@ interface Props {
   /** Adds what was typed; resolves true when the box should be cleared. */
   onQuickAdd: (text: string) => Promise<boolean>;
   onAddMany: (text: string) => void;
-  onImport?: () => void;
-  onExport?: () => void;
   onHelp: () => void;
   onSettings?: () => void;
 }
@@ -26,7 +24,7 @@ const PLACEHOLDERS: Partial<Record<Mode, string>> = {
 };
 
 /** The title bar shared by both libraries: mode switch, add box, import/export, help, settings and window buttons. */
-export function Header({ mode, setMode, theme, toggleTheme, onQuickAdd, onAddMany, onImport, onExport, onHelp, onSettings }: Props) {
+export function Header({ mode, setMode, theme, toggleTheme, onQuickAdd, onAddMany, onHelp, onSettings }: Props) {
   const [text, setText] = useState('');
   const bookmarks = useLibrary().bookmarks.length;
   const links = useLinks().links;
@@ -72,8 +70,6 @@ export function Header({ mode, setMode, theme, toggleTheme, onQuickAdd, onAddMan
         <button type="button" className="btn" disabled={!canAdd || mode === 'rss'} onClick={() => { onAddMany(text.trim()); setText(''); }} title="Add several links at once (Ctrl+Shift+N)" aria-label="Add many"><IconList size={15} /><span className="btn-label">Add many</span></button>
       </form>
       <div className="topbar-actions" data-tauri-drag-region>
-        <button type="button" className="btn" onClick={onImport} disabled={!onImport} title="Import (Ctrl+I)"><IconUpload /><span className="btn-label">Import</span></button>
-        <button type="button" className="btn" onClick={onExport} disabled={!onExport} title="Export (Ctrl+E)"><IconDownload /><span className="btn-label">Export</span></button>
         <button
           type="button"
           className="icon-btn"

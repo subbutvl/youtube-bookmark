@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { isTauri } from '../lib/storage';
 import { errorText, MINIMIZE_TO_TRAY_PREF, useLibrary, usePref, useStore, type Density, type ThemePref } from '../state';
 import { Dialog } from './Dialog';
+import { IconDownload, IconUpload } from './Icons';
 
 interface Props {
   onClose: () => void;
@@ -10,16 +11,17 @@ interface Props {
   density: Density;
   setDensity: (d: Density) => void;
   /** The current library's "fetch missing details" row. */
-  details: { label: string; noun: string; missing: number; canFetch: boolean; fetch: () => void };
+  details?: { label: string; noun: string; missing: number; canFetch: boolean; fetch: () => void };
+  /** Import and export for the current tab; each closes Settings and opens its own dialog. */
+  data?: { label: string; hint: string; onImport: () => void; onExport: () => void };
 }
 
-export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, details }: Props) {
+export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, details, data }: Props) {
   const store = useStore();
   useLibrary(); // re-render when the key or library changes
   const [key, setKey] = useState('');
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const { missing, noun } = details;
   const [toTray, setToTray] = usePref<'on' | 'off'>(MINIMIZE_TO_TRAY_PREF, 'on');
 
   const save = async () => {
@@ -42,6 +44,16 @@ export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, 
   return (
     <Dialog title="Settings" onClose={onClose} footer={<button type="button" className="btn" onClick={onClose}>Done</button>}>
       <div className="dialog-body" style={{ gap: 20 }}>
+        {data && (
+          <div className="field">
+            <span>{data.label}</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn" onClick={data.onImport} title="Ctrl+I"><IconUpload />Import</button>
+              <button type="button" className="btn" onClick={data.onExport} title="Ctrl+E"><IconDownload />Export</button>
+              <span className="hint">{data.hint}</span>
+            </div>
+          </div>
+        )}
         <div className="field">
           <span>Appearance</span>
           <div className="seg" role="group" aria-label="Theme">
@@ -87,15 +99,17 @@ export function SettingsDialog({ onClose, theme, setTheme, density, setDensity, 
           </span>
           {status && <span className={status.ok ? 'ok' : 'error'} style={{ fontSize: 13 }}>{status.text}</span>}
         </div>
+        {details && (
         <div className="field">
           <span>{details.label}</span>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <span className="hint" style={{ flex: 1 }}>
-              {missing ? `${missing} ${noun}${missing === 1 ? '' : 's'} still need a title, picture or tags.` : `All ${noun}s have their details.`}
+              {details.missing ? `${details.missing} ${details.noun}${details.missing === 1 ? '' : 's'} still need a title, picture or tags.` : `All ${details.noun}s have their details.`}
             </span>
-            <button type="button" className="btn btn-sm" disabled={!missing || !details.canFetch} onClick={() => { details.fetch(); onClose(); }}>Fetch now</button>
+            <button type="button" className="btn btn-sm" disabled={!details.missing || !details.canFetch} onClick={() => { details.fetch(); onClose(); }}>Fetch now</button>
           </div>
         </div>
+        )}
       </div>
     </Dialog>
   );

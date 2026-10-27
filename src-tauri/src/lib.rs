@@ -353,6 +353,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must come first: a second launch hands over to the running app (even when it's in the tray) and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:tubemarks.db", migrations())

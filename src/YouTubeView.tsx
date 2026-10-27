@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { ShowMore } from './components/ShowMore';
 import { AddDialog } from './components/AddDialog';
 import { BookmarkCard } from './components/BookmarkCard';
 import { EditDrawer } from './components/EditDrawer';
@@ -30,6 +31,9 @@ type Modal =
 const TYPES: BookmarkType[] = ['video', 'short', 'playlist', 'channel'];
 
 /** The YouTube library: sidebar, cards, player and its dialogs. */
+/** Cards drawn at a time; more load as you scroll. */
+const PAGE = 240;
+
 export function YouTubeView({ shell }: { shell: Shell }) {
   const store = useStore();
   const linkStore = useLinkStore();
@@ -49,7 +53,11 @@ export function YouTubeView({ shell }: { shell: Shell }) {
   const autoFetched = useRef(false);
 
   const patch = (p: Partial<ViewState>) => setView((v) => ({ ...v, ...p }));
-  const { base, items } = useMemo(() => applyView(lib, view), [lib, view]);
+  // Filtering waits for typing to settle; cards are drawn a page at a time.
+  const shownView = useDeferredValue(view);
+  const { base, items } = useMemo(() => applyView(lib, shownView), [lib, shownView]);
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [shownView]);
   const catById = useMemo(() => new Map(lib.categories.map((c) => [c.id, c])), [lib.categories]);
   const tagById = useMemo(() => new Map(lib.tags.map((t) => [t.id, t])), [lib.tags]);
   const sortedCats = useMemo(() => [...lib.categories].sort((a, b) => a.name.localeCompare(b.name)), [lib.categories]);
@@ -240,7 +248,8 @@ export function YouTubeView({ shell }: { shell: Shell }) {
 
   const viewing = modal?.kind === 'view' ? lib.bookmarks.find((b) => b.id === modal.id) : undefined;
   const editing = modal?.kind === 'edit' ? lib.bookmarks.find((b) => b.id === modal.id) : undefined;
-  const groups = view.view === 'history' ? groupByDay(items) : [{ label: '', items }];
+  const pageItems = items.slice(0, limit);
+  const groups = view.view === 'history' ? groupByDay(pageItems) : [{ label: '', items: pageItems }];
   const watchedCount = lib.bookmarks.filter((b) => b.watched).length;
   const failedCount = lib.bookmarks.filter((b) => b.metadataStatus === 'failed').length;
   const selectedIds = [...selected];
@@ -280,8 +289,6 @@ export function YouTubeView({ shell }: { shell: Shell }) {
         toggleTheme={() => setThemePref(theme === 'dark' ? 'light' : 'dark')}
         onQuickAdd={quickAdd}
         onAddMany={(text) => setModal({ kind: 'add', text })}
-        onImport={() => setModal({ kind: 'io', only: 'import' })}
-        onExport={() => setModal({ kind: 'io', only: 'export' })}
         onHelp={() => setModal({ kind: 'shortcuts' })}
         onSettings={() => setModal({ kind: 'settings' })}
       />
@@ -437,6 +444,7 @@ export function YouTubeView({ shell }: { shell: Shell }) {
               </section>
             ))
           )}
+          {items.length > limit && <ShowMore left={items.length - limit} noun="bookmarks" onMore={() => setLimit((n) => n + PAGE)} />}
 
           {selected.size > 0 && (
             <div className="selbar" role="toolbar" aria-label="Selected bookmarks">
@@ -496,6 +504,7 @@ export function YouTubeView({ shell }: { shell: Shell }) {
           density={density}
           setDensity={setDensity}
           details={{ label: 'Bookmark details', noun: 'bookmark', missing: store.needsMetadata.length, canFetch: store.hasApiKey, fetch: () => void fetchMetadata(store.needsMetadata.map((b) => b.id)) }}
+          data={{ label: 'Import and export YouTube bookmarks', hint: 'Backups, the old app’s database, CSV or text.', onImport: () => setModal({ kind: 'io', only: 'import' }), onExport: () => setModal({ kind: 'io', only: 'export' }) }}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { DuplicatesDialog } from './components/DuplicatesDialog';
 import { Header } from './components/Header';
 import { IconChevronDown, IconClose, IconEdit, IconFilter, IconGrid, IconList, IconSearch, IconUpload } from './components/Icons';
@@ -14,6 +14,7 @@ import { QuickEdit, type QuickEditTarget } from './components/QuickEdit';
 import { QuickLaunch } from './components/QuickLaunch';
 import { SettingsDialog } from './components/SettingsDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { ShowMore } from './components/ShowMore';
 import type { LinkAddResult } from './lib/link-store';
 import { FLAG_LABELS, isNew, LINK_FLAGS, SECTION_LABELS, type Link, type LinkFlag, type LinkSection } from './lib/link-types';
 import { applyLinkView, DEFAULT_LINK_VIEW, groupRows, linkKpis, linkTitle, LINK_SORT_LABELS, type LinkRow, type LinkSortKey, type LinkViewState } from './lib/link-view';
@@ -66,9 +67,19 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
   const [limit, setLimit] = useState(PAGE);
 
   const patch = (p: Partial<LinkViewState>) => setView((v) => ({ ...v, ...p }));
-  const items = useMemo(() => applyLinkView(lib, view), [lib, view]);
+  // Filtering waits for typing to settle, so the search box stays quick with thousands of links.
+  const shownView = useDeferredValue(view);
+  const allItems = useMemo(() => applyLinkView(lib, shownView), [lib, shownView]);
   // A site picked in the sidebar is already one group; show its links plainly.
-  const rows = useMemo<LinkRow[]>(() => (view.group ? items.map((link) => ({ kind: 'link', link })) : groupRows(items, grouped === 'on' && !view.domain)), [items, grouped, view.domain, view.group]);
+  const allRows = useMemo<LinkRow[]>(
+    () => (shownView.group ? allItems.map((link) => ({ kind: 'link', link })) : groupRows(allItems, grouped === 'on' && !shownView.domain)),
+    [allItems, grouped, shownView.domain, shownView.group],
+  );
+  const rows = useMemo(
+    () => (view.grouping === 'all' ? allRows : allRows.filter((r) => (r.kind === 'group') === (view.grouping === 'grouped'))),
+    [allRows, view.grouping],
+  );
+  const items = useMemo(() => (view.grouping === 'all' ? allItems : rows.flatMap((r) => (r.kind === 'group' ? r.links : [r.link]))), [view.grouping, allItems, rows]);
   useEffect(() => setLimit(PAGE), [view, grouped, layout]);
   const shownRows = rows.slice(0, limit);
   const kpis = useMemo(() => linkKpis(lib.links), [lib.links]);
@@ -305,6 +316,7 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
   for (const f of view.flags) chips.push({ label: FLAG_LABELS[f], remove: () => patch({ flags: view.flags.filter((x) => x !== f) }) });
   if (view.domain) chips.push({ label: `Site: ${view.domain}`, remove: () => patch({ domain: null }) });
   if (view.group) chips.push({ label: `Group: ${view.group}`, remove: () => patch({ group: null }) });
+  if (view.grouping !== 'all') chips.push({ label: view.grouping === 'grouped' ? 'Only grouped' : 'Not in a group', remove: () => patch({ grouping: 'all' }) });
   for (const id of view.categoryIds) chips.push({ label: `Category: ${id ? catById.get(id)?.name ?? '?' : 'Uncategorized'}`, remove: () => patch({ categoryIds: view.categoryIds.filter((x) => x !== id) }) });
   for (const id of view.tagIds) chips.push({ label: `Tag: #${tagById.get(id)?.name ?? '?'}`, remove: () => patch({ tagIds: view.tagIds.filter((x) => x !== id) }) });
   if (view.query.trim()) chips.push({ label: `Search: “${view.query.trim()}”`, remove: () => patch({ query: '' }) });
@@ -433,8 +445,6 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
         toggleTheme={() => setThemePref(theme === 'dark' ? 'light' : 'dark')}
         onQuickAdd={quickAdd}
         onAddMany={(text) => setModal({ kind: 'add', text })}
-        onImport={() => setModal({ kind: 'import' })}
-        onExport={() => setModal({ kind: 'export' })}
         onHelp={() => setModal({ kind: 'shortcuts' })}
         onSettings={() => setModal({ kind: 'settings' })}
       />
@@ -500,7 +510,7 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
           )}
         </nav>
 
-        <main className={`main${selected.size ? ' selecting' : ''}`} onScroll={quickEdit ? closeQuickEdit : undefined}>
+        <main className={`main${selected.size ? ' selecting' : ''}${layout === 'table' && items.length > 0 ? ' table-mode' : ''}`} onScroll={quickEdit ? closeQuickEdit : undefined}>
           <section className="kpis" aria-label="Summary">
             {kpiCards.map((k) => (
               <button type="button" key={k.label} className="kpi" aria-pressed={k.pressed} onClick={k.onClick}>
@@ -553,6 +563,14 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
                 <div className="seg" role="group" aria-label="Status filter">
                   {(['all', 'new', 'viewed'] as const).map((s) => (
                     <button type="button" key={s} aria-pressed={view.status === s} onClick={() => patch({ status: s })}>{s === 'all' ? 'All' : s === 'new' ? 'New' : 'Viewed'}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="field" style={{ fontSize: 13 }}>
+                Groups
+                <div className="seg" role="group" aria-label="Group filter">
+                  {(['all', 'grouped', 'ungrouped'] as const).map((g) => (
+                    <button type="button" key={g} aria-pressed={view.grouping === g} onClick={() => patch({ grouping: g })}>{g === 'all' ? 'All' : g === 'grouped' ? 'Only grouped' : 'Not grouped'}</button>
                   ))}
                 </div>
               </div>
@@ -612,6 +630,7 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
           ) : layout === 'table' ? (
             <LinkTable
               rows={shownRows}
+              footer={rows.length > limit && <ShowMore left={rows.length - limit} noun={grouped === 'on' ? 'rows' : 'links'} onMore={() => setLimit((n) => n + PAGE)} />}
               expanded={expanded}
               onToggleGroup={toggleGroup}
               catById={catById}
@@ -635,11 +654,7 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
               {shownRows.map((r) => (r.kind === 'group' ? groupCard(r) : card(r.link)))}
             </div>
           )}
-          {items.length > 0 && rows.length > limit && (
-            <button type="button" className="btn" style={{ alignSelf: 'center' }} onClick={() => setLimit((n) => n + PAGE)}>
-              Show more ({(rows.length - limit).toLocaleString()} {grouped === 'on' ? 'rows' : 'links'} left)
-            </button>
-          )}
+          {items.length > 0 && layout !== 'table' && rows.length > limit && <ShowMore left={rows.length - limit} noun={grouped === 'on' ? 'rows' : 'links'} onMore={() => setLimit((n) => n + PAGE)} />}
 
           {selected.size > 0 && (
             <div className="selbar" role="toolbar" aria-label="Selected links">
@@ -738,6 +753,7 @@ export function LinksView({ shell, section }: { shell: Shell; section: LinkSecti
             canFetch: isTauri(),
             fetch: () => void fetchDetails([...store.needsMetadata, ...lib.links.filter((l) => l.metadataStatus === 'failed')].map((l) => l.id)),
           }}
+          data={{ label: 'Import and export links', hint: 'Browser bookmarks, backups, CSV or text. Exports include all link tabs.', onImport: () => setModal({ kind: 'import' }), onExport: () => setModal({ kind: 'export' }) }}
         />
       )}
     </div>
