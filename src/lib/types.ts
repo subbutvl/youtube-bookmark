@@ -12,6 +12,8 @@ export interface Bookmark {
   description: string;
   thumbnailUrl: string;
   channelName: string;
+  /** Link to the uploader's channel (for a channel bookmark, the channel itself). */
+  channelUrl: string;
   categoryId: string | null;
   tagIds: string[];
   durationSec: number | null;

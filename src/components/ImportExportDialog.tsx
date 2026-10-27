@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { exportCsv, exportJson, exportTxt, parseImportFile, type ExportFormat, type ParsedImport } from '../lib/backup';
-import { pickTextFile, saveTextFile } from '../lib/platform';
+import { exportCsv, exportJson, exportTxt, parseImportFile, parseLegacyItems, type ExportFormat, type ParsedImport } from '../lib/backup';
+import { pickLegacyDatabase, pickTextFile, saveTextFile } from '../lib/platform';
+import { isTauri } from '../lib/storage';
 import { errorText, useLibrary, useStore, useToast } from '../state';
 import { Dialog } from './Dialog';
 import { IconDownload, IconUpload } from './Icons';
@@ -11,7 +12,7 @@ const FORMATS: { id: ExportFormat; name: string; desc: string; ext: string }[] =
   { id: 'txt', name: 'Links only (.txt)', desc: 'One URL per line, for sharing or another app.', ext: 'txt' },
 ];
 
-export function ImportExportDialog({ onClose, onImported }: { onClose: () => void; onImported: (added: number) => void }) {
+export function ImportExportDialog({ onClose, onImported, only }: { onClose: () => void; onImported: (added: number) => void; only?: 'import' | 'export' }) {
   const store = useStore();
   const lib = useLibrary();
   const toast = useToast();
@@ -36,10 +37,21 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
     setError('');
     try {
       const picked = await pickTextFile();
-      if (picked) setFile({ name: picked.name, parsed: parseImportFile(picked.name, picked.text) });
+      if (picked) setFile({ name: picked.name, parsed: 'rows' in picked ? parseLegacyItems(picked.rows) : parseImportFile(picked.name, picked.text) });
     } catch (e) {
       setFile(null);
       setError(`Couldn’t read that file: ${errorText(e)}`);
+    }
+  };
+
+  const chooseLegacy = async () => {
+    setError('');
+    try {
+      const picked = await pickLegacyDatabase();
+      if (picked) setFile({ name: picked.name, parsed: parseLegacyItems(picked.rows) });
+    } catch (e) {
+      setFile(null);
+      setError(errorText(e));
     }
   };
 
@@ -61,7 +73,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
 
   return (
     <Dialog
-      title="Import and export"
+      title={only === 'export' ? 'Export YouTube bookmarks' : only === 'import' ? 'Import YouTube bookmarks' : 'Import and export'}
       onClose={onClose}
       footer={
         <>
@@ -77,7 +89,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
       }
     >
       <div className="dialog-body" style={{ gap: 22 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {only !== 'import' && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 15 }}>Export</h3>
           {FORMATS.map((f) => (
             <button type="button" className="option-btn" key={f.id} onClick={() => doExport(f)} disabled={!lib.bookmarks.length}>
@@ -88,14 +100,23 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
               </span>
             </button>
           ))}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        </div>}
+        {only !== 'export' && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 15 }}>Import</h3>
           <div className="dropzone">
             <IconUpload size={22} />
-            <span style={{ fontWeight: 500 }}>A .ytbm.json backup, a .csv with a “url” column, or any .txt / .html file with YouTube links</span>
+            <span style={{ fontWeight: 500 }}>A .ytbm.json backup, a .csv with a “url” column, any .txt / .html file with YouTube links, or the old app’s .sqlite</span>
             <button type="button" className="btn btn-sm" onClick={choose}>Choose file</button>
           </div>
+          {isTauri() && (
+            <button type="button" className="option-btn" onClick={chooseLegacy}>
+              <IconUpload size={18} />
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontWeight: 600 }}>From the old YouTube Organizer app (.sqlite)</span>
+                <span className="hint">Brings in each link, its type, watched flag and date added. Titles, categories and tags are then fetched from YouTube. The old file is only read, never changed.</span>
+              </span>
+            </button>
+          )}
           {file && preview && (
             <div className="note" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14 }}>
               <span style={{ fontWeight: 600, wordBreak: 'break-all' }}>{file.name}</span>
@@ -118,7 +139,7 @@ export function ImportExportDialog({ onClose, onImported }: { onClose: () => voi
               )}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </Dialog>
   );

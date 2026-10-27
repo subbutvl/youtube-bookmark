@@ -1,10 +1,43 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { LibraryStore } from './lib/library';
+import type { LinkStore } from './lib/link-store';
+import type { RssStore } from './lib/rss-store';
+import type { Category, Tag } from './lib/types';
 
 const StoreContext = createContext<LibraryStore | null>(null);
+const LinkStoreContext = createContext<LinkStore | null>(null);
+const RssStoreContext = createContext<RssStore | null>(null);
 
-export function StoreProvider({ store, children }: { store: LibraryStore; children: ReactNode }) {
-  return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
+export function StoreProvider({ store, linkStore, rssStore, children }: { store: LibraryStore; linkStore: LinkStore; rssStore: RssStore; children: ReactNode }) {
+  return (
+    <StoreContext.Provider value={store}>
+      <LinkStoreContext.Provider value={linkStore}>
+        <RssStoreContext.Provider value={rssStore}>{children}</RssStoreContext.Provider>
+      </LinkStoreContext.Provider>
+    </StoreContext.Provider>
+  );
+}
+
+export function useRssStore(): RssStore {
+  const s = useContext(RssStoreContext);
+  if (!s) throw new Error('useRssStore outside StoreProvider');
+  return s;
+}
+
+export function useRss() {
+  const store = useRssStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+
+export function useLinkStore(): LinkStore {
+  const s = useContext(LinkStoreContext);
+  if (!s) throw new Error('useLinkStore outside StoreProvider');
+  return s;
+}
+
+export function useLinks() {
+  const store = useLinkStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
 export function useStore(): LibraryStore {
@@ -16,6 +49,64 @@ export function useStore(): LibraryStore {
 export function useLibrary() {
   const store = useStore();
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+
+export type PlaceholderMode = 'movies' | 'tv' | 'books' | 'games';
+export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | PlaceholderMode;
+export const PLACEHOLDER_MODES: PlaceholderMode[] = ['movies', 'tv', 'books', 'games'];
+export const MODES: { id: Mode; label: string }[] = [
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'links', label: 'Links' },
+  { id: 'git', label: 'Git' },
+  { id: 'wiki', label: 'Wikipedia' },
+  { id: 'rss', label: 'RSS' },
+  { id: 'movies', label: 'Movies' },
+  { id: 'tv', label: 'TV Shows' },
+  { id: 'books', label: 'Books' },
+  { id: 'games', label: 'Games' },
+];
+
+/** What the app shell hands each library view. */
+export interface Shell {
+  mode: Mode;
+  setMode: (m: Mode) => void;
+  theme: 'light' | 'dark';
+  themePref: ThemePref;
+  setThemePref: (t: ThemePref) => void;
+  /** Plays a YouTube video or Short in the app-wide player. */
+  play: (bookmarkId: string) => void;
+}
+
+/** What category and tag editors need from either library. */
+export interface Taxonomy {
+  ops: {
+    addCategory(name: string, color?: string): Promise<Category>;
+    updateCategory(id: string, patch: Partial<Pick<Category, 'name' | 'color'>>): Promise<void>;
+    mergeCategory(fromId: string, toId: string): Promise<void>;
+    deleteCategory(id: string): Promise<void>;
+    addTag(name: string): Promise<Tag>;
+    renameTag(id: string, name: string): Promise<void>;
+    mergeTags(fromIds: string[], toId: string): Promise<void>;
+    deleteTags(ids: string[]): Promise<void>;
+    setCategory(ids: string[], categoryId: string | null): Promise<void>;
+    setCategoryByName(ids: string[], name: string): Promise<Category>;
+    setTags(id: string, names: string[]): Promise<void>;
+  };
+  items: { id: string; categoryId: string | null; tagIds: string[] }[];
+  categories: Category[];
+  tags: Tag[];
+  /** "bookmark" or "link", for messages. */
+  noun: string;
+}
+
+export function useTaxonomy(mode: Mode): Taxonomy {
+  const store = useStore();
+  const lib = useLibrary();
+  const linkStore = useLinkStore();
+  const links = useLinks();
+  return mode !== 'youtube'
+    ? { ops: linkStore, items: links.links, categories: links.categories, tags: links.tags, noun: 'link' }
+    : { ops: store, items: lib.bookmarks, categories: lib.categories, tags: lib.tags, noun: 'bookmark' };
 }
 
 // ---------- toasts ----------
@@ -62,6 +153,16 @@ export const useToast = () => useContext(ToastContext);
 
 export type ThemePref = 'light' | 'dark' | 'system';
 export type Density = 'comfortable' | 'compact';
+
+export const MINIMIZE_TO_TRAY_PREF = 'minimizeToTray';
+/** Whether the title bar's minimize button hides the window to the system tray (on unless turned off in Settings). */
+export function minimizeToTrayEnabled(): boolean {
+  try {
+    return localStorage.getItem(`tubemarks.${MINIMIZE_TO_TRAY_PREF}`) !== 'off';
+  } catch {
+    return true;
+  }
+}
 
 export function usePref<T extends string>(key: string, initial: T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {

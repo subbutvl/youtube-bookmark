@@ -3,7 +3,8 @@ import type { AddResult } from '../lib/library';
 import { TYPE_LABELS } from '../lib/types';
 import { displayTitle } from '../lib/view';
 import { instantThumbnail, parseYouTubeUrl, splitUrls } from '../lib/youtube-url';
-import { errorText, useLibrary, useStore } from '../state';
+import { parseLink } from '../lib/link-url';
+import { errorText, useLibrary, useLinkStore, useStore, useToast } from '../state';
 import { Dialog, TagInput } from './Dialog';
 
 interface Props {
@@ -17,10 +18,13 @@ type Row =
   | { kind: 'new'; input: string; type: string; thumb: string; playlistId?: string }
   | { kind: 'dup'; input: string; type: string; thumb: string; title: string; existingId: string }
   | { kind: 'repeat'; input: string }
+  | { kind: 'link'; input: string }
   | { kind: 'invalid'; input: string };
 
 export function AddDialog({ initialText = '', onClose, onDone, onShowExisting }: Props) {
   const store = useStore();
+  const linkStore = useLinkStore();
+  const toast = useToast();
   const lib = useLibrary();
   const [text, setText] = useState(initialText);
   const [categoryId, setCategoryId] = useState('');
@@ -33,7 +37,7 @@ export function AddDialog({ initialText = '', onClose, onDone, onShowExisting }:
     const seen = new Set<string>();
     return splitUrls(text).map((input): Row => {
       const p = parseYouTubeUrl(input);
-      if (!p) return { kind: 'invalid', input };
+      if (!p) return parseLink(input) ? { kind: 'link', input } : { kind: 'invalid', input };
       if (seen.has(p.dedupeKey)) return { kind: 'repeat', input };
       seen.add(p.dedupeKey);
       const existing = store.findByKey(p.dedupeKey);
@@ -46,6 +50,7 @@ export function AddDialog({ initialText = '', onClose, onDone, onShowExisting }:
   }, [text, store, lib]);
 
   const fresh = rows.filter((r) => r.kind === 'new').length;
+  const webLinks = rows.flatMap((r) => (r.kind === 'link' ? [r.input] : []));
   const offers = rows.flatMap((r) => (r.kind === 'new' && r.playlistId && !store.findByKey(`playlist:${r.playlistId}`) ? [r.playlistId] : []));
 
   const submit = async () => {
@@ -53,7 +58,11 @@ export function AddDialog({ initialText = '', onClose, onDone, onShowExisting }:
     setError('');
     try {
       const extra = savePlaylists ? offers.map((id) => `https://www.youtube.com/playlist?list=${id}`).join('\n') : '';
-      const r = await store.addUrls(`${text}\n${extra}`, { categoryId: categoryId || null, tagNames: tags });
+      if (webLinks.length) {
+        const lr = await linkStore.addUrls(webLinks, { tagNames: tags });
+        if (lr.added.length) toast({ text: `Saved ${lr.added.length} other link${lr.added.length === 1 ? '' : 's'} to Links.` });
+      }
+      const r = await store.addUrls(`${rows.filter((x) => x.kind !== 'link').map((x) => x.input).join('\n')}\n${extra}`, { categoryId: categoryId || null, tagNames: tags });
       onDone(r);
     } catch (e) {
       setError(errorText(e));
@@ -70,7 +79,7 @@ export function AddDialog({ initialText = '', onClose, onDone, onShowExisting }:
           {error && <span className="error">{error}</span>}
           <span className="spacer" />
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" disabled={!fresh || busy} onClick={submit}>
+          <button type="button" className="btn btn-primary" disabled={!(fresh || webLinks.length) || busy} onClick={submit}>
             {fresh ? `Add ${fresh + (savePlaylists ? offers.length : 0)} bookmark${fresh + (savePlaylists ? offers.length : 0) === 1 ? '' : 's'}` : 'Add'}
           </button>
         </>
@@ -97,11 +106,12 @@ export function AddDialog({ initialText = '', onClose, onDone, onShowExisting }:
                       </span>
                     )}
                     {r.kind === 'repeat' && <span className="hint">Same link appears earlier in this list</span>}
-                    {r.kind === 'invalid' && <span className="hint">Not a YouTube video, Short, playlist or channel link</span>}
+                    {r.kind === 'invalid' && <span className="hint">Not a link</span>}
+                    {r.kind === 'link' && <span className="hint">Not a YouTube link, so it goes to Links</span>}
                   </div>
                   {'type' in r && <span className="pill">{r.type}</span>}
-                  <span className={r.kind === 'new' ? 'ok' : 'warn'} style={{ fontSize: 12, fontWeight: 600, width: 64, textAlign: 'right' }}>
-                    {r.kind === 'new' ? 'New' : r.kind === 'invalid' ? 'Invalid' : 'Skipped'}
+                  <span className={r.kind === 'new' || r.kind === 'link' ? 'ok' : 'warn'} style={{ fontSize: 12, fontWeight: 600, width: 64, textAlign: 'right' }}>
+                    {r.kind === 'new' ? 'New' : r.kind === 'link' ? 'To Links' : r.kind === 'invalid' ? 'Invalid' : 'Skipped'}
                   </span>
                 </div>
               ))}

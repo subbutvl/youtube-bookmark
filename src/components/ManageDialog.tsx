@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { CATEGORY_COLORS } from '../lib/types';
-import { errorText, useLibrary, useStore, useToast } from '../state';
+import { errorText, useTaxonomy, useToast, type Mode } from '../state';
 import { Dialog } from './Dialog';
 import { IconEdit, IconMerge, IconTrash } from './Icons';
 
-export function ManageDialog({ onClose }: { onClose: () => void }) {
-  const store = useStore();
-  const lib = useLibrary();
+export function ManageDialog({ onClose, mode = 'youtube' }: { onClose: () => void; mode?: Mode }) {
+  const { ops: store, items, categories, tags: allTags, noun } = useTaxonomy(mode);
   const toast = useToast();
   const [newCat, setNewCat] = useState('');
   const [tagQuery, setTagQuery] = useState('');
@@ -15,13 +14,13 @@ export function ManageDialog({ onClose }: { onClose: () => void }) {
   const [merging, setMerging] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const catCount = (id: string) => lib.bookmarks.filter((b) => b.categoryId === id).length;
-  const tagCount = (id: string) => lib.bookmarks.filter((b) => b.tagIds.includes(id)).length;
-  const uncategorized = lib.bookmarks.filter((b) => !b.categoryId).length;
-  const tags = [...lib.tags]
+  const catCount = (id: string) => items.filter((b) => b.categoryId === id).length;
+  const tagCount = (id: string) => items.filter((b) => b.tagIds.includes(id)).length;
+  const uncategorized = items.filter((b) => !b.categoryId).length;
+  const tags = [...allTags]
     .filter((t) => t.name.toLowerCase().includes(tagQuery.trim().toLowerCase().replace(/^#/, '')))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const cats = [...lib.categories].sort((a, b) => a.name.localeCompare(b.name));
+  const cats = [...categories].sort((a, b) => a.name.localeCompare(b.name));
 
   const run = async (fn: () => Promise<unknown>) => {
     setError('');
@@ -67,7 +66,7 @@ export function ManageDialog({ onClose }: { onClose: () => void }) {
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <h3>Categories</h3>
-            <span className="hint">One per bookmark</span>
+            <span className="hint">One per {noun}</span>
           </div>
           <form
             style={{ display: 'flex', gap: 8 }}
@@ -111,7 +110,7 @@ export function ManageDialog({ onClose }: { onClose: () => void }) {
                   className="icon-btn sm"
                   aria-label={`Delete ${c.name}`}
                   title="Delete"
-                  onClick={() => void run(async () => { await store.deleteCategory(c.id); toast({ text: `Deleted ${c.name}. Its bookmarks are now Uncategorized.` }); })}
+                  onClick={() => void run(async () => { await store.deleteCategory(c.id); toast({ text: `Deleted ${c.name}. Its ${noun}s are now Uncategorized.` }); })}
                 >
                   <IconTrash size={14} />
                 </button>
@@ -125,13 +124,13 @@ export function ManageDialog({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           <datalist id="cat-colors">{CATEGORY_COLORS.map((c) => <option key={c} value={c} />)}</datalist>
-          <div className="note">Deleting a category moves its bookmarks to Uncategorized. Merging moves them into the category you pick.</div>
+          <div className="note">Deleting a category moves its {noun}s to Uncategorized. Merging moves them into the category you pick.</div>
         </section>
 
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <h3>Tags</h3>
-            <span className="hint">Any number per bookmark</span>
+            <span className="hint">Any number per {noun}</span>
           </div>
           <form
             style={{ display: 'flex', gap: 8 }}
@@ -175,7 +174,7 @@ export function ManageDialog({ onClose }: { onClose: () => void }) {
                 }}
               >
                 <option value="" disabled>Merge into…</option>
-                {selectedTags.map((id) => <option key={id} value={id}>#{lib.tags.find((t) => t.id === id)?.name}</option>)}
+                {selectedTags.map((id) => <option key={id} value={id}>#{allTags.find((t) => t.id === id)?.name}</option>)}
               </select>
             )}
             {selectedTags.length > 0 && (
