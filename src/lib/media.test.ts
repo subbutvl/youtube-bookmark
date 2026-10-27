@@ -123,12 +123,12 @@ describe('MediaStore', () => {
     expect((await storage.media.load()).items).toHaveLength(1);
   });
 
-  it('adds the top 100 lists once', async () => {
-    expect(TOP_MOVIES).toHaveLength(100);
-    expect(TOP_TV).toHaveLength(100);
+  it('adds the top 250 lists once', async () => {
+    expect(TOP_MOVIES).toHaveLength(250);
+    expect(TOP_TV).toHaveLength(250);
     const store = new MediaStore(new MemoryStorage().media, null, () => 'IN');
-    expect(await store.addTop('movie')).toEqual({ added: 100, skipped: 0 });
-    expect(await store.addTop('movie')).toEqual({ added: 0, skipped: 100 });
+    expect(await store.addTop('movie')).toEqual({ added: 250, skipped: 0 });
+    expect(await store.addTop('movie')).toEqual({ added: 0, skipped: 250 });
     expect(store.getSnapshot().items.every((i) => i.kind === 'movie' && i.metadataStatus === 'pending')).toBe(true);
   });
 
@@ -137,6 +137,43 @@ describe('MediaStore', () => {
     await store.addManual(blankItem('tv', { title: 'Panchayat', year: 2020, language: 'Hindi' }));
     expect((await store.addManual(blankItem('tv', { title: 'panchayat', year: 2020 }))).existed).toBe(true);
     expect((await store.addManual(blankItem('movie', { title: 'Panchayat', year: 2020 }))).existed).toBe(false);
+  });
+});
+
+describe('duplicates and rewatches', () => {
+  it('blocks edits that would duplicate another title', async () => {
+    const store = new MediaStore(new MemoryStorage().media, null, () => 'IN');
+    await store.addManual(blankItem('movie', { title: 'Inception', year: 2010, imdbId: 'tt1375666' }));
+    const { item } = await store.addManual(blankItem('movie', { title: 'Tenet', year: 2020 }));
+    await expect(store.update(item.id, { imdbId: 'tt1375666' })).rejects.toThrow(/already saved/);
+    await expect(store.update(item.id, { title: 'Inception', year: 2010 })).rejects.toThrow(/already saved/);
+    await store.update(item.id, { notes: 'fine' });
+    // Same name in its own language counts as the same title.
+    expect((await store.addManual(blankItem('movie', { title: 'Something else', originalTitle: 'Tenet', year: 2020 }))).existed).toBe(true);
+  });
+
+  it('merges two saved names that turn out to be one title', async () => {
+    const storage = new MemoryStorage();
+    const store = new MediaStore(storage.media, fakeFetchers(), () => 'IN');
+    await store.init();
+    const old = blankItem('movie', { title: 'Inception (Nolan)', imdbId: 'tt1375666', status: 'watched', watchCount: 2, createdAt: '2020-01-01T00:00:00Z' });
+    const dup = blankItem('movie', { title: 'Inception', year: 2010, notes: 'from a friend', metadataStatus: 'pending' });
+    await storage.media.save([old, dup]);
+    await store.init();
+    await store.fetchDetails([dup.id]);
+    const items = store.getSnapshot().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ id: old.id, watchCount: 2, status: 'watched', notes: 'from a friend' });
+  });
+
+  it('counts rewatches', async () => {
+    const store = new MediaStore(new MemoryStorage().media, null, () => 'IN');
+    const { item } = await store.addManual(blankItem('tv', { title: 'Panchayat' }));
+    await store.addWatch(item.id);
+    await store.addWatch(item.id);
+    expect(store.getSnapshot().items[0]).toMatchObject({ watchCount: 2, status: 'watched' });
+    await store.setWatchCount(item.id, 0);
+    expect(store.getSnapshot().items[0]).toMatchObject({ watchCount: 0, status: 'none' });
   });
 });
 

@@ -107,8 +107,23 @@ export function MediaDetail({ item, onClose, onEdit, onRelink }: Props) {
               </div>
               <div className="seg" role="group" aria-label="Status">
                 {STATUSES.map((s) => (
-                  <button type="button" key={s} aria-pressed={item.status === s} onClick={() => patch({ status: item.status === s ? 'none' : s })}>{STATUS_LABELS[s]}</button>
+                  <button
+                    type="button"
+                    key={s}
+                    aria-pressed={item.status === s}
+                    onClick={() => (s === 'watched' && item.status !== 'watched' && !item.watchCount ? void store.addWatch(item.id) : patch({ status: item.status === s ? 'none' : s }))}
+                  >
+                    {STATUS_LABELS[s]}
+                  </button>
                 ))}
+              </div>
+              <div className="md-watches">
+                <span>
+                  {item.watchCount ? <>Watched <b>{item.watchCount}</b> time{item.watchCount === 1 ? '' : 's'}</> : 'Not watched yet'}
+                  {item.lastWatchedAt && <span className="hint"> · last {new Date(item.lastWatchedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                </span>
+                <button type="button" className="icon-btn sm" aria-label="One less" title="One less" disabled={!item.watchCount} onClick={() => void store.setWatchCount(item.id, item.watchCount - 1)}>−</button>
+                <button type="button" className="btn btn-sm" onClick={() => void store.addWatch(item.id)}>{item.watchCount ? '+1 Watched again' : '+1 Watched'}</button>
               </div>
               {item.synopsis ? <p className="md-synopsis">{item.synopsis}</p> : <p className="hint">{fetching ? 'Looking up details…' : 'No synopsis yet. Use Edit to write one.'}</p>}
               {item.metadataStatus === 'failed' && !fetching && (

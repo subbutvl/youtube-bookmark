@@ -60,6 +60,9 @@ export interface MediaItem {
   status: WatchStatus;
   /** Your own rating out of 10. */
   myRating: number | null;
+  /** How many times you've watched it (rewatches count). */
+  watchCount: number;
+  lastWatchedAt: string | null;
   notes: string;
   createdAt: string;
   updatedAt: string;
@@ -95,6 +98,8 @@ export function blankItem(kind: MediaKind, patch: Partial<MediaItem> = {}): Medi
     justwatchPath: '',
     status: 'none',
     myRating: null,
+    watchCount: 0,
+    lastWatchedAt: null,
     notes: '',
     createdAt: at,
     updatedAt: at,
@@ -118,9 +123,19 @@ export const COUNTRIES: { code: string; name: string }[] = [
 ];
 
 const at = (s: string) => s.toLowerCase().replace(/^the\s+/, '').replace(/[^\p{L}\p{N}]+/gu, '');
-/** Same title for spotting duplicates: the IMDb id when known, else name and year. */
-export function sameTitle(a: Pick<MediaItem, 'kind' | 'imdbId' | 'title' | 'year'>, b: Pick<MediaItem, 'kind' | 'imdbId' | 'title' | 'year'>): boolean {
+type Ident = Pick<MediaItem, 'kind' | 'imdbId' | 'title' | 'year'> & Partial<Pick<MediaItem, 'originalTitle' | 'justwatchPath'>>;
+const jwKey = (p?: string) => (p ?? '').replace(/^\/[a-z]{2}\//, '/');
+/**
+ * Same title, for blocking duplicates: the IMDb id or JustWatch page when both sides know it,
+ * else the name (or name in its own language) and year.
+ */
+export function sameTitle(a: Ident, b: Ident): boolean {
   if (a.imdbId && b.imdbId) return a.imdbId === b.imdbId;
-  return a.kind === b.kind && at(a.title) === at(b.title) && (a.year == null || b.year == null || a.year === b.year);
+  if (a.justwatchPath && b.justwatchPath) return jwKey(a.justwatchPath) === jwKey(b.justwatchPath);
+  if (a.kind !== b.kind) return false;
+  if (a.year != null && b.year != null && a.year !== b.year) return false;
+  const names = (x: Ident) => [at(x.title), at(x.originalTitle ?? '')].filter(Boolean);
+  const nb = names(b);
+  return names(a).some((n) => nb.includes(n));
 }
 export const normTitle = at;

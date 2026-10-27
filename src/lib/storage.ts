@@ -82,6 +82,7 @@ export class MemoryStorage implements Storage {
           this.linkLib = saved.linkLib ?? this.linkLib;
           this.rssLib = saved.rssLib ?? this.rssLib;
           this.mediaLib = saved.mediaLib ?? this.mediaLib;
+          this.mediaLib.items = this.mediaLib.items.map((i) => ({ ...i, watchCount: i.watchCount ?? 0, lastWatchedAt: i.lastWatchedAt ?? null }));
           // Preview data from before tabs and manual groups.
           this.linkLib.links = this.linkLib.links.map((l) => ({ ...l, section: l.section ?? sectionFor(l.domain), groupName: l.groupName ?? null }));
         }
@@ -619,14 +620,14 @@ class SqliteRssStorage implements RssStorage {
 const MEDIA_COLUMNS = [
   'id', 'kind', 'title', 'original_title', 'year', 'language', 'synopsis', 'poster_url', 'imdb_id', 'imdb_rating', 'imdb_votes', 'rt_score',
   'genres', 'runtime', 'seasons', 'trailer_id', 'links', 'watch', 'justwatch_path', 'status', 'my_rating', 'notes',
-  'created_at', 'updated_at', 'fetched_at', 'metadata_status',
+  'created_at', 'updated_at', 'fetched_at', 'metadata_status', 'watch_count', 'last_watched_at',
 ] as const;
 
 function mediaValues(m: MediaItem): unknown[] {
   return [
     m.id, m.kind, m.title, m.originalTitle, m.year, m.language, m.synopsis, m.posterUrl, m.imdbId, m.imdbRating, m.imdbVotes, m.rtScore,
     JSON.stringify(m.genres), m.runtime, m.seasons, m.trailerId, JSON.stringify(m.links), JSON.stringify(m.watch), m.justwatchPath, m.status, m.myRating, m.notes,
-    m.createdAt, m.updatedAt, m.fetchedAt, m.metadataStatus,
+    m.createdAt, m.updatedAt, m.fetchedAt, m.metadataStatus, m.watchCount, m.lastWatchedAt,
   ];
 }
 
@@ -673,13 +674,15 @@ class SqliteMediaStorage implements MediaStorage {
         updatedAt: r.updated_at,
         fetchedAt: r.fetched_at,
         metadataStatus: r.metadata_status,
+        watchCount: r.watch_count ?? 0,
+        lastWatchedAt: r.last_watched_at ?? null,
       })),
     };
   }
 
   async save(items: MediaItem[]) {
     const updates = MEDIA_COLUMNS.filter((c) => c !== 'id' && c !== 'created_at').map((c) => `${c} = excluded.${c}`).join(', ');
-    // 30 rows × 26 columns stays under SQLite's 999-parameter limit.
+    // 30 rows × 28 columns stays under SQLite's 999-parameter limit.
     for (const batch of chunk(items, 30)) {
       await this.db.execute(
         `INSERT INTO media_items (${MEDIA_COLUMNS.join(', ')}) VALUES ${placeholders(batch.length, MEDIA_COLUMNS.length)} ON CONFLICT(id) DO UPDATE SET ${updates}`,

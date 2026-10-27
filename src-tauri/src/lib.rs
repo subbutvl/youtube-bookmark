@@ -342,6 +342,12 @@ fn migrations() -> Vec<Migration> {
         description: "movies and tv shows",
         sql: include_str!("../migrations/0006_media.sql"),
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 7,
+        description: "media watch count",
+        sql: include_str!("../migrations/0007_media_watch_count.sql"),
+        kind: MigrationKind::Up,
     }]
 }
 

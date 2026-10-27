@@ -96,8 +96,8 @@ export class MediaStore {
     return this.fetchers;
   }
 
-  find(probe: Pick<MediaItem, 'kind' | 'imdbId' | 'title' | 'year'>): MediaItem | undefined {
-    return this.lib.items.find((i) => sameTitle(i, probe));
+  find(probe: Parameters<typeof sameTitle>[1], exceptId?: string): MediaItem | undefined {
+    return this.lib.items.find((i) => i.id !== exceptId && sameTitle(i, probe));
   }
 
   private async put(items: MediaItem[]) {
@@ -198,16 +198,36 @@ export class MediaStore {
     return { item, existed: false };
   }
 
+  /** Changes a title. Throws if the change would make it the same as another saved title. */
   async update(id: string, patch: Partial<MediaItem>) {
     const old = this.lib.items.find((i) => i.id === id);
     if (!old) return;
-    await this.put([{ ...old, ...patch, id, updatedAt: now() }]);
+    const next = { ...old, ...patch, id, updatedAt: now() };
+    const twin = ['kind', 'title', 'originalTitle', 'year', 'imdbId', 'justwatchPath'].some((k) => k in patch) ? this.find(next, id) : undefined;
+    if (twin) throw new Error(`That would duplicate “${twin.title}${twin.year ? ` (${twin.year})` : ''}”, which is already saved.`);
+    await this.put([next]);
+  }
+
+  /** Counts one more viewing (rewatches add up) and marks the title watched. */
+  async addWatch(id: string) {
+    const old = this.lib.items.find((i) => i.id === id);
+    if (old) await this.update(id, { watchCount: old.watchCount + 1, lastWatchedAt: now(), status: 'watched' });
+  }
+
+  /** Sets how many times it was watched; 0 also clears Watched. */
+  async setWatchCount(id: string, n: number) {
+    const old = this.lib.items.find((i) => i.id === id);
+    if (!old) return;
+    const watchCount = Math.max(0, Math.round(n));
+    await this.update(id, { watchCount, status: watchCount ? 'watched' : old.status === 'watched' ? 'none' : old.status, lastWatchedAt: watchCount > old.watchCount ? now() : old.lastWatchedAt });
   }
 
   /** Points a title at another search result (when the first match was wrong), keeping your status, notes and platforms. */
   async relink(id: string, c: Candidate) {
     const old = this.lib.items.find((i) => i.id === id);
     if (!old) return;
+    const twin = this.find(c, id);
+    if (twin) throw new Error(`“${twin.title}${twin.year ? ` (${twin.year})` : ''}” is already saved; delete this one instead.`);
     const fresh = itemFromCandidate(c);
     await this.put([{
       ...fresh,
@@ -215,6 +235,8 @@ export class MediaStore {
       kind: c.kind,
       status: old.status,
       myRating: old.myRating,
+      watchCount: old.watchCount,
+      lastWatchedAt: old.lastWatchedAt,
       notes: old.notes,
       links: old.links.filter((l) => !/wikipedia\.org|justwatch\.com/.test(l.url)),
       watch: mergeWatch(old.watch, fresh.watch),
@@ -222,6 +244,48 @@ export class MediaStore {
       updatedAt: now(),
     }]);
     void this.fetchDetails([id]);
+  }
+
+  /** Folds a duplicate into the title saved first, keeping the best of both, and deletes the duplicate. */
+  private async merge(keep: MediaItem, dup: MediaItem) {
+    const rank: Record<string, number> = { none: 0, want: 1, watching: 2, watched: 3 };
+    let links = keep.links;
+    for (const l of dup.links) links = addLink(links, l);
+    const filled = Object.fromEntries(
+      (Object.keys(dup) as (keyof MediaItem)[])
+        .filter((k) => { const v = keep[k]; return v == null || v === '' || (Array.isArray(v) && !v.length); })
+        .map((k) => [k, dup[k]]),
+    ) as Partial<MediaItem>;
+    await this.put([{
+      ...keep,
+      ...filled,
+      id: keep.id,
+      createdAt: keep.createdAt,
+      links,
+      watch: mergeWatch([...keep.watch, ...dup.watch.filter((w) => w.manual)].filter((w, i, all) => !w.manual || all.findIndex((x) => x.manual && x.provider === w.provider && x.type === w.type) === i), (keep.watch.some((w) => !w.manual) ? keep.watch : dup.watch).filter((w) => !w.manual)),
+      status: rank[dup.status] > rank[keep.status] ? dup.status : keep.status,
+      watchCount: Math.max(keep.watchCount, dup.watchCount),
+      myRating: keep.myRating ?? dup.myRating,
+      notes: [keep.notes, dup.notes].filter(Boolean).filter((n, i, a) => a.indexOf(n) === i).join('\n'),
+      metadataStatus: keep.metadataStatus === 'ok' || dup.metadataStatus === 'ok' ? 'ok' : keep.metadataStatus,
+      updatedAt: now(),
+    }]);
+    await this.remove([dup.id]);
+  }
+
+  /** Finds titles saved twice and merges each pair. Returns how many were merged. */
+  async mergeDuplicates(): Promise<number> {
+    let merged = 0;
+    for (const item of [...this.lib.items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      const cur = this.lib.items.find((i) => i.id === item.id);
+      if (!cur) continue;
+      const twin = this.lib.items.find((i) => i.id !== cur.id && sameTitle(i, cur) && i.createdAt >= cur.createdAt);
+      if (twin) {
+        await this.merge(cur, twin);
+        merged++;
+      }
+    }
+    return merged;
   }
 
   async remove(ids: string[]) {
@@ -232,7 +296,7 @@ export class MediaStore {
     this.emit();
   }
 
-  /** Adds the top 100 list for movies or TV shows (titles already saved are skipped) and looks them up. */
+  /** Adds the top 250 list for movies or TV shows (titles already saved are skipped) and looks them up. */
   async addTop(kind: MediaKind): Promise<{ added: number; skipped: number }> {
     const list = kind === 'movie' ? TOP_MOVIES : TOP_TV;
     const base = Date.now();
@@ -261,7 +325,13 @@ export class MediaStore {
       for (let id = queue.shift(); id; id = queue.shift()) {
         try {
           const item = this.lib.items.find((i) => i.id === id);
-          if (item) await this.put([await this.lookup(item)]);
+          if (item) {
+            const next = await this.lookup(item);
+            // Two saved names can turn out to be the same title (e.g. "Star Wars" and "Star Wars: A New Hope"): keep one.
+            const twin = this.find(next, id);
+            if (twin) await this.merge(twin, next);
+            else await this.put([next]);
+          }
         } catch {
           const item = this.lib.items.find((i) => i.id === id);
           if (item) await this.put([{ ...item, metadataStatus: 'failed', fetchedAt: now() }]).catch(() => {});

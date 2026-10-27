@@ -22,7 +22,7 @@ Built with [Tauri 2](https://tauri.app), React and TypeScript. Your library is a
 
 ## Movies and TV Shows
 
-Type a name (any language) or paste an IMDb, Wikipedia, JustWatch or Rotten Tomatoes link in the Movies or TV Shows tab. Each title gets its poster, IMDb and Rotten Tomatoes scores, synopsis, language, a YouTube trailer, links, and where to watch it in your country, with direct links to the platforms. Everything can also be typed in by hand, including platforms. **Add IMDb top 100** fills either tab with a starter list.
+Type a name (any language) or paste an IMDb, Wikipedia, JustWatch or Rotten Tomatoes link in the Movies or TV Shows tab. Each title gets its poster, IMDb and Rotten Tomatoes scores, synopsis, language, a YouTube trailer, links, and where to watch it in your country, with direct links to the platforms. Everything can also be typed in by hand, including platforms. **Add IMDb top 250** fills either tab with a starter list. A title can never be saved twice (same IMDb id, JustWatch page, or name and year), and each title counts how many times you watched it.
 
 No API keys are needed. Details come from JustWatch's site API, IMDb's search suggestions, Wikidata/Wikipedia and YouTube's search page. These aren't official APIs and may change; when a lookup fails, the title is kept and can be completed by hand.
 

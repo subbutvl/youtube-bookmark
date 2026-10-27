@@ -23,11 +23,12 @@ type Modal =
   | { kind: 'help' }
   | null;
 
-type SortKey = 'added' | 'imdb' | 'rt' | 'mine' | 'year-desc' | 'year-asc' | 'title';
+type SortKey = 'added' | 'imdb' | 'rt' | 'mine' | 'watches' | 'year-desc' | 'year-asc' | 'title';
 const SORTS: Record<SortKey, string> = {
-  added: 'Recently added', imdb: 'IMDb rating', rt: 'Rotten Tomatoes', mine: 'My rating', 'year-desc': 'Newest', 'year-asc': 'Oldest', title: 'Name',
+  added: 'Recently added', imdb: 'IMDb rating', rt: 'Rotten Tomatoes', mine: 'My rating', watches: 'Most watched', 'year-desc': 'Newest', 'year-asc': 'Oldest', title: 'Name',
 };
-const STATUS_FILTERS: (WatchStatus | 'all')[] = ['all', 'want', 'watching', 'watched'];
+type StatusFilter = WatchStatus | 'all' | 'rewatched';
+const STATUS_FILTERS: StatusFilter[] = ['all', 'want', 'watching', 'watched', 'rewatched'];
 const NONE = '\u0000none';
 const PAGE = 120;
 
@@ -49,7 +50,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
   const [country, setCountry] = usePref<string>(MEDIA_COUNTRY_PREF, 'IN');
   const [modal, setModal] = useState<Modal>(null);
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<WatchStatus | 'all'>('all');
+  const [status, setStatus] = useState<StatusFilter>('all');
   const [provider, setProvider] = useState('');
   const [genre, setGenre] = useState('');
   const [language, setLanguage] = useState('');
@@ -75,7 +76,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
   const items = useMemo(() => {
     const q = fold(shownQuery.trim());
     const list = mine.filter((i) => {
-      if (status !== 'all' && i.status !== status) return false;
+      if (status === 'rewatched' ? i.watchCount < 2 : status !== 'all' && i.status !== status) return false;
       if (provider && !(provider === NONE ? !i.watch.length : i.watch.some((w) => w.provider === provider))) return false;
       if (genre && !i.genres.includes(genre)) return false;
       if (language && i.language !== language) return false;
@@ -87,6 +88,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
       imdb: (a, b) => byNum(a.imdbRating, b.imdbRating) || byNum(a.imdbVotes, b.imdbVotes),
       rt: (a, b) => byNum(a.rtScore, b.rtScore),
       mine: (a, b) => byNum(a.myRating, b.myRating),
+      watches: (a, b) => b.watchCount - a.watchCount || (b.lastWatchedAt ?? '').localeCompare(a.lastWatchedAt ?? ''),
       'year-desc': (a, b) => byNum(a.year, b.year),
       'year-asc': (a, b) => (a.year ?? 9999) - (b.year ?? 9999),
       title: (a, b) => a.title.localeCompare(b.title),
@@ -104,7 +106,9 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
     resumed = true;
     const left = store.getSnapshot().items.filter((i) => i.metadataStatus === 'pending');
     if (left.length) void store.fetchDetails(left.map((i) => i.id));
-  }, [store]);
+    // Titles saved twice by an older version are merged once per launch.
+    void store.mergeDuplicates().then((n) => n && toast({ text: `Merged ${n} title${n === 1 ? '' : 's'} that ${n === 1 ? 'was' : 'were'} saved twice.` }, 8000));
+  }, [store, toast]);
 
   const quickAdd = async (text: string) => {
     if (!store.canFetch) {
@@ -214,8 +218,8 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
           <div className="nav-group">
             {STATUS_FILTERS.map((s) => (
               <button type="button" key={s} className="nav-item" aria-pressed={status === s} onClick={() => setStatus(s)}>
-                <span className="label">{s === 'all' ? `All ${label.toLowerCase()}` : STATUS_LABELS[s]}</span>
-                <span className="count">{s === 'all' ? mine.length : facets.status.find(([k]) => k === s)?.[1] ?? ''}</span>
+                <span className="label">{s === 'all' ? `All ${label.toLowerCase()}` : s === 'rewatched' ? 'Watched more than once' : STATUS_LABELS[s]}</span>
+                <span className="count">{s === 'all' ? mine.length : s === 'rewatched' ? mine.filter((i) => i.watchCount > 1).length || '' : facets.status.find(([k]) => k === s)?.[1] ?? ''}</span>
               </button>
             ))}
           </div>
@@ -223,7 +227,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
           {facetNav('Languages', facets.languages, language, setLanguage)}
           {facetNav('Genres', facets.genres, genre, setGenre)}
           <div className="nav-group media-tools">
-            <button type="button" className="btn" onClick={() => void addTop()}><IconStar size={14} />Add IMDb top 100</button>
+            <button type="button" className="btn" onClick={() => void addTop()}><IconStar size={14} />Add IMDb top 250</button>
             {movable.length > 0 && (
               <button type="button" className={`btn${confirmMove ? ' btn-primary' : ''}`} onBlur={() => setConfirmMove(false)} onClick={() => void moveLinks()} title="IMDb, Rotten Tomatoes, JustWatch and film articles saved in the Links or Wikipedia tabs">
                 {confirmMove ? `Move ${movable.length} now?` : `Move ${movable.length} movie link${movable.length === 1 ? '' : 's'} from Links`}
@@ -274,7 +278,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
               <h2>Your {label.toLowerCase()}</h2>
               <span>Type a name in any language, or paste an IMDb, Wikipedia or JustWatch link, in the box at the top. Each title gets its poster, ratings, synopsis, trailer and where to watch it.</span>
               <div className="chips">
-                <button type="button" className="btn btn-primary" onClick={() => void addTop()}><IconStar size={14} />Start with the IMDb top 100</button>
+                <button type="button" className="btn btn-primary" onClick={() => void addTop()}><IconStar size={14} />Start with the IMDb top 250</button>
                 <button type="button" className="btn" onClick={() => setModal({ kind: 'add', text: '' })}>Search for a {KIND_NOUN[kind]}</button>
               </div>
               {!isTauri() && <span className="hint">Details are looked up in the desktop app only.</span>}
@@ -290,7 +294,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
                       <Poster url={i.posterUrl} title={i.title} className="mposter-img" />
                       {i.imdbRating != null && <span className="mbadge">★ {i.imdbRating.toFixed(1)}</span>}
                       {store.fetching.has(i.id) && <span className="mbadge busy">…</span>}
-                      {i.status !== 'none' && <span className={`mstatus ${i.status}`}>{STATUS_LABELS[i.status]}</span>}
+                      {i.status !== 'none' && <span className={`mstatus ${i.status}`}>{STATUS_LABELS[i.status]}{i.status === 'watched' && i.watchCount > 1 ? ` ×${i.watchCount}` : ''}</span>}
                     </div>
                     <div className="mcard-body">
                       <b className="mcard-title">{i.title}</b>
@@ -300,7 +304,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
                   </button>
                   <div className="card-actions">
                     <button type="button" aria-pressed={i.status === 'want'} title={i.status === 'want' ? 'Remove from want to watch' : 'Want to watch'} aria-label="Want to watch" onClick={() => void store.update(i.id, { status: i.status === 'want' ? 'none' : 'want' })}><IconStar size={14} /></button>
-                    <button type="button" aria-pressed={i.status === 'watched'} title={i.status === 'watched' ? 'Mark not watched' : 'Mark watched'} aria-label="Watched" onClick={() => void store.update(i.id, { status: i.status === 'watched' ? 'none' : 'watched' })}><IconEye size={14} /></button>
+                    <button type="button" aria-pressed={i.watchCount > 0} title={i.watchCount ? `Watched ${i.watchCount} time${i.watchCount === 1 ? '' : 's'}. Click to count one more viewing` : 'Mark watched'} aria-label="Count a viewing" onClick={() => void store.addWatch(i.id)}><IconEye size={14} /></button>
                   </div>
                 </article>
               ))}
