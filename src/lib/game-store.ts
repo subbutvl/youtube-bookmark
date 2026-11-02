@@ -274,6 +274,12 @@ export class GameStore {
     }
   }
 
+  /** At launch: looks up games left half-done, games whose lookup failed, and games found before covers could be read. */
+  resume() {
+    const left = this.lib.games.filter((g) => g.metadataStatus === 'pending' || g.metadataStatus === 'failed' || (g.metadataStatus === 'ok' && !g.coverUrl && g.wikiUrl));
+    if (left.length) void this.fetchDetails(left.map((g) => g.id));
+  }
+
   /** Finds a trailer on YouTube for a game that has none (done when its page is opened). */
   async fetchTrailer(id: string): Promise<string> {
     const g = this.lib.games.find((x) => x.id === id);

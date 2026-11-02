@@ -31,8 +31,6 @@ type StatusFilter = PlayStatus | 'all';
 const STATUS_FILTERS: StatusFilter[] = ['all', 'want', 'playing', 'finished', 'dropped'];
 const PAGE = 120;
 
-// Games left half-done (app closed mid-lookup) are looked up again once per launch.
-let resumed = false;
 
 interface Filters {
   platform: Platform | '';
@@ -107,13 +105,6 @@ export function GamesView({ shell }: { shell: Shell }) {
   const failed = games.filter((g) => g.metadataStatus === 'failed');
   const anyFilter = Object.values(f).some(Boolean);
 
-  useEffect(() => {
-    if (resumed || !store.canFetch) return;
-    resumed = true;
-    // Also games whose lookup failed, and games found before covers could be read (Wikipedia only lists free images unless asked).
-    const left = store.getSnapshot().games.filter((g) => g.metadataStatus === 'pending' || g.metadataStatus === 'failed' || (g.metadataStatus === 'ok' && !g.coverUrl && g.wikiUrl));
-    if (left.length) void store.fetchDetails(left.map((g) => g.id));
-  }, [store]);
 
   const quickAdd = async (text: string) => {
     setModal(store.canFetch ? { kind: 'add', text } : { kind: 'edit', game: blankGame({ title: text }), isNew: true });

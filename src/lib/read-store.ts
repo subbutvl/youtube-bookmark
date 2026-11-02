@@ -298,6 +298,12 @@ export class ReadStore {
     }
   }
 
+  /** At launch: looks up works left half-done or whose lookup failed. */
+  resume() {
+    const left = this.lib.items.filter((x) => x.metadataStatus === 'pending' || x.metadataStatus === 'failed');
+    if (left.length) void this.fetchDetails(left.map((x) => x.id));
+  }
+
   /** Reads the plot section of a work's article, once per session, when it's opened and has none. */
   async fetchSynopsis(id: string): Promise<string> {
     const x = this.lib.items.find((y) => y.id === id);

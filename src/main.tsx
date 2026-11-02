@@ -32,6 +32,9 @@ async function start() {
     // Feeds are read again every half hour while the app is open (and at start, if stale).
     if (isTauri()) {
       void rssStore.refreshAll(REFRESH_MS);
+      // Games and books whose lookup didn't finish (app closed, or Wikipedia busy) are looked up again at every launch.
+      gameStore.resume();
+      readStore.resume();
       setInterval(() => void rssStore.refreshAll(REFRESH_MS), 5 * 60_000);
     }
     root.render(

@@ -37,8 +37,6 @@ const TOP_HINT: Record<ReadKind, string> = {
   magazine: '150 magazines: 105 on movies, TV shows, photography, hobbies, space, travel and food, and 45 more on science, technology, design, music, gaming, ideas, nature and Tamil weeklies.',
 };
 
-// Works left half-done (app closed mid-lookup) are looked up again once per launch.
-let resumed = false;
 
 interface Filters {
   language: string;
@@ -120,12 +118,6 @@ export function BooksView({ shell }: { shell: Shell }) {
   const failed = works.filter((x) => x.metadataStatus === 'failed');
   const anyFilter = Object.values(f).some(Boolean);
 
-  useEffect(() => {
-    if (resumed || !store.canFetch) return;
-    resumed = true;
-    const left = store.getSnapshot().items.filter((x) => x.metadataStatus === 'pending' || x.metadataStatus === 'failed');
-    if (left.length) void store.fetchDetails(left.map((x) => x.id));
-  }, [store]);
 
   const quickAdd = async (text: string) => {
     setModal(store.canFetch ? { kind: 'add', text } : { kind: 'edit', item: blankRead(kind, { title: text }), isNew: true });
