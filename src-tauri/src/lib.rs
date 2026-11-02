@@ -192,8 +192,18 @@ fn error_chain(e: &dyn std::error::Error) -> String {
 }
 
 async fn get_feed(url: reqwest::Url, http1: bool) -> Result<reqwest::Response, reqwest::Error> {
+    // Wikimedia throttles apps that pose as browsers; its policy asks for a name and a contact link instead.
+    let wikimedia = url
+        .host_str()
+        .map(|h| h.ends_with("wikipedia.org") || h.ends_with("wikidata.org") || h.ends_with("wikimedia.org"))
+        .unwrap_or(false);
+    let agent = if wikimedia {
+        "TubeMarks/0.1 (personal bookmark app; https://github.com/subbutvl/youtube-bookmark) reqwest"
+    } else {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+    };
     let mut builder = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+        .user_agent(agent)
         .timeout(std::time::Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::limited(8));
     if http1 {

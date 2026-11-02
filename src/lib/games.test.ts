@@ -211,7 +211,7 @@ describe('GameStore', () => {
     await store.addManual(blankGame({ title: 'The Witcher 3: Wild Hunt', year: 2015 }));
     await store.fetchDetails(store.getSnapshot().games.map((g) => g.id));
     expect(store.getSnapshot().games[0]).toMatchObject({ metadataStatus: 'ok', coverUrl: 'https://upload.wikimedia.org/w3.jpg' });
-    expect(waits).toEqual([3000, 10000]);
+    expect(waits).toEqual([5000, 20000]);
     expect(store.lastError).toBe('');
 
     const down = new GameStore(new MemoryStorage().games, { get: async () => { throw new Error('The site answered 429 Too Many Requests'); } }, async () => {});

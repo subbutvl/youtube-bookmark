@@ -10,8 +10,8 @@ const now = () => new Date().toISOString();
 /** Games looked up per round (one Wikipedia and one Wikidata request each). */
 const BATCH = 20;
 /** Pause between batches, and waits before retrying a batch that failed. */
-const PAUSE_MS = 300;
-const RETRY_WAITS = [3000, 10000, 30000];
+const PAUSE_MS = 1000;
+const RETRY_WAITS = [5000, 20000, 60000];
 
 const isKey = <T extends string>(map: Record<T, string>) => (k: string): k is T => k in map;
 
@@ -72,6 +72,8 @@ export class GameStore {
   progress: GameProgress | null = null;
   /** Why the last lookup failed, shown in the Games tab ('' when it worked). */
   lastError = '';
+  /** Lookups started again by themselves after Wikipedia refused (a few per session). */
+  private autoRetries = 0;
 
   constructor(
     private readonly storage: GameStorage,
@@ -222,6 +224,7 @@ export class GameStore {
     this.progress = { done: 0, total: (this.progress?.total ?? 0) - (this.progress?.done ?? 0) + todo.length };
     this.lastError = '';
     this.emit();
+    const refused: string[] = [];
     for (let i = 0; i < todo.length; i += BATCH) {
       // After a batch fails even with retries, the rest wait for "Look up missing" instead of failing one by one.
       const giveUp = !!this.lastError && i > 0;
@@ -251,6 +254,7 @@ export class GameStore {
         this.lastError = '';
       } catch (e) {
         if (!giveUp) this.lastError = e instanceof Error ? e.message : String(e);
+        refused.push(...batch.map((g) => g.id));
         const failed = batch.filter((g) => this.lib.games.some((x) => x.id === g.id)).map((g) => ({ ...g, metadataStatus: 'failed' as const, fetchedAt: now() }));
         await this.put(failed).catch(() => {});
       } finally {
@@ -263,6 +267,11 @@ export class GameStore {
     }
     // Games deleted before their turn.
     for (const id of todo) this.fetching.delete(id);
+    // Refused (not "not found"): try those again in a couple of minutes.
+    if (refused.length && this.autoRetries < 3) {
+      this.autoRetries++;
+      setTimeout(() => void this.fetchDetails(refused.filter((id) => this.lib.games.some((g) => g.id === id && g.metadataStatus === 'failed'))), 2 * 60_000);
+    }
   }
 
   /** Finds a trailer on YouTube for a game that has none (done when its page is opened). */
