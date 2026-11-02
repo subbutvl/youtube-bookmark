@@ -636,3 +636,16 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .media-tools .field-inline .select { min-width: 0; flex: 1; height: 34px; }
 .md-watches { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .md-watches .icon-btn.sm { border: 1px solid var(--border-strong); width: 28px; height: 28px; font-weight: 700; }
+
+/* ---------- games ---------- */
+.gposter { aspect-ratio: 3 / 4; }
+.gcover { aspect-ratio: 3 / 4; object-fit: cover; }
+.mposter .mhours { position: absolute; right: 6px; bottom: 6px; padding: 2px 7px; border-radius: 6px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 11px; font-weight: 600; }
+.mstatus.playing { background: #1f6feb; }
+.mstatus.finished { background: #2e7d3e; }
+.mstatus.dropped { background: #6e7681; }
+.chip.muted { color: var(--muted); }
+.game-toggles .chip { padding: 0 12px; cursor: pointer; height: 28px; }
+.game-toggles .chip[aria-pressed='true'] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.md-links .btn-link svg { vertical-align: -2px; margin-right: 3px; }
+.nav-group select.select { width: 100%; }

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { GameStore } from './lib/game-store';
 import { LibraryStore } from './lib/library';
 import { LinkStore } from './lib/link-store';
 import { MediaStore } from './lib/media-store';
@@ -22,9 +23,10 @@ async function start() {
     const rssStore = new RssStore(storage.rss, fetchText);
     const mediaFetchers = isTauri() ? { get: async (url: string) => (await fetchText(url)).body, postJson } : null;
     const mediaStore = new MediaStore(storage.media, mediaFetchers, mediaCountry);
+    const gameStore = new GameStore(storage.games, mediaFetchers);
     // Movie and TV links pasted or imported anywhere go to the Movies and TV Shows tabs, never to Links.
     linkStore.mediaSink = (urls) => void mediaStore.addLinks(urls);
-    await Promise.all([store.init(), linkStore.init(), rssStore.init(), mediaStore.init()]);
+    await Promise.all([store.init(), linkStore.init(), rssStore.init(), mediaStore.init(), gameStore.init()]);
     // Feeds are read again every half hour while the app is open (and at start, if stale).
     if (isTauri()) {
       void rssStore.refreshAll(REFRESH_MS);
@@ -32,7 +34,7 @@ async function start() {
     }
     root.render(
       <StrictMode>
-        <StoreProvider store={store} linkStore={linkStore} rssStore={rssStore} mediaStore={mediaStore}>
+        <StoreProvider store={store} linkStore={linkStore} rssStore={rssStore} mediaStore={mediaStore} gameStore={gameStore}>
           <ToastProvider>
             <App />
           </ToastProvider>

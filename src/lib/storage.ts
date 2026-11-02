@@ -1,4 +1,5 @@
 import { sectionFor, type Link, type LinkLibrary } from './link-types';
+import type { Game, GameLibrary } from './game-types';
 import type { MediaItem, MediaLibrary } from './media-types';
 import type { RssFeed, RssItem, RssLibrary } from './rss-types';
 import type { Bookmark, Category, Library, Tag } from './types';
@@ -22,6 +23,14 @@ export interface Storage {
   rss: RssStorage;
   /** Movies and TV shows. */
   media: MediaStorage;
+  /** Games. */
+  games: GameStorage;
+}
+
+export interface GameStorage {
+  load(): Promise<GameLibrary>;
+  save(games: Game[]): Promise<void>;
+  delete(ids: string[]): Promise<void>;
 }
 
 export interface MediaStorage {
@@ -66,10 +75,12 @@ export class MemoryStorage implements Storage {
   private linkLib: LinkLibrary = { links: [], categories: [], tags: [] };
   private rssLib: RssLibrary = { feeds: [], items: [] };
   private mediaLib: MediaLibrary = { items: [] };
+  private gameLib: GameLibrary = { games: [] };
   private settings: Record<string, string> = {};
   readonly links: LinkStorage;
   readonly rss: RssStorage;
   readonly media: MediaStorage;
+  readonly games: GameStorage;
 
   constructor(private readonly persistKey?: string) {
     if (persistKey && typeof localStorage !== 'undefined') {
@@ -82,6 +93,7 @@ export class MemoryStorage implements Storage {
           this.linkLib = saved.linkLib ?? this.linkLib;
           this.rssLib = saved.rssLib ?? this.rssLib;
           this.mediaLib = saved.mediaLib ?? this.mediaLib;
+          this.gameLib = saved.gameLib ?? this.gameLib;
           this.mediaLib.items = this.mediaLib.items.map((i) => ({ ...i, watchCount: i.watchCount ?? 0, lastWatchedAt: i.lastWatchedAt ?? null }));
           // Preview data from before tabs and manual groups.
           this.linkLib.links = this.linkLib.links.map((l) => ({ ...l, section: l.section ?? sectionFor(l.domain), groupName: l.groupName ?? null }));
@@ -93,12 +105,13 @@ export class MemoryStorage implements Storage {
     this.links = this.makeLinkStorage();
     this.rss = this.makeRssStorage();
     this.media = this.makeMediaStorage();
+    this.games = this.makeGameStorage();
   }
 
   private persist() {
     if (!this.persistKey || typeof localStorage === 'undefined') return;
     try {
-      localStorage.setItem(this.persistKey, JSON.stringify({ lib: this.lib, settings: this.settings, linkLib: this.linkLib, rssLib: this.rssLib, mediaLib: this.mediaLib }));
+      localStorage.setItem(this.persistKey, JSON.stringify({ lib: this.lib, settings: this.settings, linkLib: this.linkLib, rssLib: this.rssLib, mediaLib: this.mediaLib, gameLib: this.gameLib }));
     } catch {
       // Storage full or blocked; the preview keeps working in memory.
     }
@@ -106,6 +119,24 @@ export class MemoryStorage implements Storage {
 
   private upsert<T extends { id: string }>(list: T[], items: T[]): T[] {
     return upsert(list, items);
+  }
+
+  private makeGameStorage(): GameStorage {
+    const self = this;
+    return {
+      async load() {
+        return structuredClone(self.gameLib);
+      },
+      async save(games) {
+        self.gameLib.games = upsert(self.gameLib.games, games);
+        self.persist();
+      },
+      async delete(ids) {
+        const drop = new Set(ids);
+        self.gameLib.games = self.gameLib.games.filter((g) => !drop.has(g.id));
+        self.persist();
+      },
+    };
   }
 
   private makeMediaStorage(): MediaStorage {
@@ -285,10 +316,12 @@ export class SqliteStorage implements Storage {
   readonly links: LinkStorage;
   readonly rss: RssStorage;
   readonly media: MediaStorage;
+  readonly games: GameStorage;
   private constructor(private readonly db: SqlDb) {
     this.links = new SqliteLinkStorage(db);
     this.rss = new SqliteRssStorage(db);
     this.media = new SqliteMediaStorage(db);
+    this.games = new SqliteGameStorage(db);
   }
 
   static async open(): Promise<SqliteStorage> {
@@ -694,6 +727,73 @@ class SqliteMediaStorage implements MediaStorage {
   async delete(ids: string[]) {
     for (const batch of chunk(ids, 400)) {
       await this.db.execute(`DELETE FROM media_items WHERE id IN (${batch.map((_, i) => `$${i + 1}`).join(', ')})`, batch);
+    }
+  }
+}
+
+const GAME_COLUMNS = [
+  'id', 'title', 'year', 'platforms', 'genres', 'origin', 'types', 'hours', 'official_url', 'ign_url', 'wiki_url', 'trailer_id', 'links',
+  'cover_url', 'summary', 'developer', 'rank', 'status', 'my_rating', 'notes', 'created_at', 'updated_at', 'fetched_at', 'metadata_status',
+] as const;
+
+function gameValues(g: Game): unknown[] {
+  return [
+    g.id, g.title, g.year, JSON.stringify(g.platforms), JSON.stringify(g.genres), g.origin, JSON.stringify(g.types), g.hours, g.officialUrl, g.ignUrl,
+    g.wikiUrl, g.trailerId, JSON.stringify(g.links), g.coverUrl, g.summary, g.developer, g.rank, g.status, g.myRating, g.notes,
+    g.createdAt, g.updatedAt, g.fetchedAt, g.metadataStatus,
+  ];
+}
+
+/** Games (migration 0008). Lists (platforms, genres, types, links) are stored as JSON. */
+class SqliteGameStorage implements GameStorage {
+  constructor(private readonly db: SqlDb) {}
+
+  async load(): Promise<GameLibrary> {
+    const rows = await this.db.select<Row[]>('SELECT * FROM games');
+    return {
+      games: rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        year: r.year,
+        platforms: jsonList(r.platforms),
+        genres: jsonList(r.genres),
+        origin: r.origin,
+        types: jsonList(r.types),
+        hours: r.hours,
+        officialUrl: r.official_url,
+        ignUrl: r.ign_url,
+        wikiUrl: r.wiki_url,
+        trailerId: r.trailer_id,
+        links: jsonList(r.links),
+        coverUrl: r.cover_url,
+        summary: r.summary,
+        developer: r.developer,
+        rank: r.rank,
+        status: r.status,
+        myRating: r.my_rating,
+        notes: r.notes,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        fetchedAt: r.fetched_at,
+        metadataStatus: r.metadata_status,
+      })),
+    };
+  }
+
+  async save(games: Game[]) {
+    const updates = GAME_COLUMNS.filter((c) => c !== 'id' && c !== 'created_at').map((c) => `${c} = excluded.${c}`).join(', ');
+    // 40 rows × 24 columns stays under SQLite's 999-parameter limit.
+    for (const batch of chunk(games, 40)) {
+      await this.db.execute(
+        `INSERT INTO games (${GAME_COLUMNS.join(', ')}) VALUES ${placeholders(batch.length, GAME_COLUMNS.length)} ON CONFLICT(id) DO UPDATE SET ${updates}`,
+        batch.flatMap(gameValues),
+      );
+    }
+  }
+
+  async delete(ids: string[]) {
+    for (const batch of chunk(ids, 400)) {
+      await this.db.execute(`DELETE FROM games WHERE id IN (${batch.map((_, i) => `$${i + 1}`).join(', ')})`, batch);
     }
   }
 }

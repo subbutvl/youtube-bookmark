@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { VideoPlayer, type PlayerMode } from './components/VideoPlayer';
+import { GamesView } from './GamesView';
 import { LinksView } from './LinksView';
 import { MediaView } from './MediaView';
 import { MoviesView } from './MoviesView';
@@ -49,6 +50,8 @@ export default function App() {
         <RssView shell={shell} />
       ) : mode === 'movies' || mode === 'tv' ? (
         <MoviesView key={mode} shell={shell} kind={mode === 'tv' ? 'tv' : 'movie'} />
+      ) : mode === 'games' ? (
+        <GamesView shell={shell} />
       ) : isPlaceholder(mode) ? (
         <MediaView key={mode} shell={shell} kind={mode} />
       ) : (
