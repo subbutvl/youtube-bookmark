@@ -36,6 +36,7 @@ describe('YouTubeApi.fetchMany', () => {
             title: `Title ${id}`,
             description: 'Line one\nLine two',
             channelTitle: 'Chan',
+            channelId: 'UCchan',
             categoryId: '27',
             tags: ['Claude Code', 'AI', 'ai', 'one', 'two', 'three', 'four'],
             thumbnails: { high: { url: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` } },
@@ -62,6 +63,8 @@ describe('YouTubeApi.fetchMany', () => {
     expect(calls.filter((c) => c.startsWith('videoCategories?'))).toHaveLength(1);
     const v = res.get(`video:${ids[0]}`)!;
     expect(v).toMatchObject({ title: `Title ${ids[0]}`, description: 'Line one', categoryName: 'Education', durationSec: 245, viewCount: 1234 });
+    expect(v.channelUrl).toBe('https://www.youtube.com/channel/UCchan');
+    expect(res.get('channel:@known')?.channelUrl).toBe('https://www.youtube.com/@known');
     expect(v.tags).toEqual(['claude-code', 'ai', 'one', 'two', 'three']);
     expect(res.get('playlist:PL1')?.itemCount).toBe(24);
     expect(res.get('channel:@known')?.title).toBe('Known');
@@ -72,5 +75,22 @@ describe('YouTubeApi.fetchMany', () => {
     const api = new YouTubeApi('BAD', (async () =>
       new Response(JSON.stringify({ error: { message: 'API key not valid', errors: [{ reason: 'badRequest' }] } }), { status: 400 })) as typeof fetch);
     await expect(api.verifyKey()).rejects.toBeInstanceOf(YouTubeApiError);
+  });
+
+  it('lists every page of a playlist with lengths, marking missing videos', async () => {
+    const calls: string[] = [];
+    const page = (ids: string[], next?: string) => ({
+      items: ids.map((id) => ({ snippet: { title: id === 'gone' ? 'Deleted video' : `T ${id}`, thumbnails: {} }, contentDetails: { videoId: id } })),
+      nextPageToken: next,
+    });
+    const api = new YouTubeApi('KEY', fakeFetch({
+      playlistItems: (p) => (p.get('pageToken') === 'P2' ? page(['c']) : page(['a', 'gone', 'b'], 'P2')),
+      videos: (p) => ({ items: p.get('id')!.split(',').filter((id) => id !== 'gone').map((id) => ({ id, contentDetails: { duration: 'PT1M' } })) }),
+    }, calls));
+    const list = await api.playlistItems('PL1');
+    expect(list.map((i) => [i.position, i.videoId, i.available, i.durationSec])).toEqual([
+      [1, 'a', true, 60], [2, 'gone', false, null], [3, 'b', true, 60], [4, 'c', true, 60],
+    ]);
+    expect(calls.filter((c) => c.startsWith('playlistItems?'))).toHaveLength(2);
   });
 });

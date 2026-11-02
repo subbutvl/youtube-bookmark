@@ -10,13 +10,23 @@ Built with [Tauri 2](https://tauri.app), React and TypeScript. Your library is a
 - Automatic grouping: Videos, Shorts, Playlists, Channels
 - Title, thumbnail, 1-line description, category and tags from YouTube (Data API v3)
 - Add, rename, recolor, merge and delete categories and tags
-- Card grid: 5 cards per row at 1200 px, 6 at 1440 px; compact mode fits more
+- Card grid: 6 cards per row (7 in compact mode), fewer on narrow windows
 - Search (title, channel, description, category, tags, notes), sort and filter
 - History: when each link was added, grouped by day
 - Watched / unwatched, toggled by hand (eye button on each card)
 - Duplicates are never stored: `youtu.be/ID`, `watch?v=ID&t=2s`, `?si=…`, `/@name/videos` and so on all count as the same bookmark
 - Import / export: full JSON backup, CSV, or plain list of links
 - Light, dark and system themes
+- Keyboard shortcuts (press `?` in the app for the list)
+- Frameless window with its own minimize, maximize and close buttons; minimize hides to the system tray (can be turned off in Settings)
+
+## Movies and TV Shows
+
+Type a name (any language) or paste an IMDb, Wikipedia, JustWatch or Rotten Tomatoes link in the Movies or TV Shows tab. Each title gets its poster, IMDb and Rotten Tomatoes scores, synopsis, language, a YouTube trailer, links, and where to watch it in your country, with direct links to the platforms. Everything can also be typed in by hand, including platforms. **Add IMDb top 250** fills either tab with a starter list. A title can never be saved twice (same IMDb id, JustWatch page, or name and year), and each title counts how many times you watched it.
+
+No API keys are needed. Details come from JustWatch's site API, IMDb's search suggestions, Wikidata/Wikipedia and YouTube's search page. These aren't official APIs and may change; when a lookup fails, the title is kept and can be completed by hand.
+
+Movie and TV links (IMDb, Rotten Tomatoes, JustWatch, Letterboxd, TMDB, and Wikipedia articles about a film or series) are never saved in Links or Wikipedia: pasting or importing one adds the title to Movies or TV Shows with the link kept on it.
 
 ## Run it
 

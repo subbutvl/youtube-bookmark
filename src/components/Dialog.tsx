@@ -7,15 +7,16 @@ interface Props {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  variant?: 'normal' | 'wide' | 'drawer';
+  /** 'viewer' is a drawer covering 80% of the window, for watching. */
+  variant?: 'normal' | 'wide' | 'drawer' | 'viewer';
 }
 
 export function Dialog({ title, onClose, children, footer, variant = 'normal' }: Props) {
   const id = useId();
   useEscape(onClose);
   return (
-    <div className={`overlay${variant === 'drawer' ? ' right' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section className={`dialog${variant === 'wide' ? ' wide' : ''}${variant === 'drawer' ? ' drawer' : ''}`} role="dialog" aria-modal="true" aria-labelledby={id}>
+    <div className={`overlay${variant === 'drawer' || variant === 'viewer' ? ' right' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <section className={`dialog${variant === 'wide' ? ' wide' : ''}${variant === 'drawer' || variant === 'viewer' ? ' drawer' : ''}${variant === 'viewer' ? ' viewer' : ''}`} role="dialog" aria-modal="true" aria-labelledby={id}>
         <div className="dialog-head">
           <h2 id={id}>{title}</h2>
           <button type="button" className="icon-btn sm" aria-label="Close" onClick={onClose}><IconClose /></button>

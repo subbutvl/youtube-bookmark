@@ -5,7 +5,7 @@ import { applyView, DEFAULT_VIEW, groupByDay, relativeDay } from './view';
 function bm(over: Partial<Bookmark>): Bookmark {
   return {
     id: over.id ?? Math.random().toString(36), url: 'https://www.youtube.com/watch?v=x', type: 'video', youtubeId: 'x', dedupeKey: `video:${over.id}`,
-    title: '', description: '', thumbnailUrl: '', channelName: '', categoryId: null, tagIds: [], durationSec: null, publishedAt: null,
+    title: '', description: '', thumbnailUrl: '', channelName: '', channelUrl: '', categoryId: null, tagIds: [], durationSec: null, publishedAt: null,
     viewCount: null, itemCount: null, notes: '', watched: false, createdAt: '2026-10-01T10:00:00Z', updatedAt: '', metadataStatus: 'ok', ...over,
   };
 }

@@ -6,6 +6,7 @@ export interface FetchedMetadata {
   description: string;
   thumbnailUrl: string;
   channelName: string;
+  channelUrl: string;
   categoryName: string | null;
   tags: string[];
   durationSec: number | null;
@@ -13,6 +14,21 @@ export interface FetchedMetadata {
   viewCount: number | null;
   itemCount: number | null;
 }
+
+/** One video in a playlist, in playlist order. */
+export interface PlaylistEntry {
+  videoId: string;
+  position: number;
+  title: string;
+  channelName: string;
+  thumbnailUrl: string;
+  durationSec: number | null;
+  /** False for private, deleted or region-blocked videos. */
+  available: boolean;
+}
+
+/** Longest playlist the viewer will list (YouTube caps playlists at 5,000). */
+export const MAX_PLAYLIST_ITEMS = 5000;
 
 export interface MetadataRequest {
   type: BookmarkType;
@@ -72,6 +88,10 @@ function cleanTags(tags: string[] | undefined): string[] {
   return out;
 }
 
+function channelLink(id: string | undefined): string {
+  return id ? `https://www.youtube.com/channel/${id}` : '';
+}
+
 function chunks<T>(xs: T[], n: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
@@ -124,6 +144,7 @@ export class YouTubeApi {
           description: firstLine(s.description ?? ''),
           thumbnailUrl: bestThumb(s.thumbnails),
           channelName: s.channelTitle ?? '',
+          channelUrl: channelLink(s.channelId),
           categoryName: await this.categoryName(s.categoryId),
           tags: cleanTags(s.tags),
           durationSec: parseDuration(item.contentDetails?.duration),
@@ -147,6 +168,7 @@ export class YouTubeApi {
           description: firstLine(s.description ?? ''),
           thumbnailUrl: bestThumb(s.thumbnails),
           channelName: s.channelTitle ?? '',
+          channelUrl: channelLink(s.channelId),
           categoryName: null,
           tags: [],
           durationSec: null,
@@ -174,6 +196,7 @@ export class YouTubeApi {
       description: firstLine(s.description ?? ''),
       thumbnailUrl: bestThumb(s.thumbnails),
       channelName: s.customUrl ?? youtubeId,
+      channelUrl: s.customUrl?.startsWith('@') ? `https://www.youtube.com/${s.customUrl}` : channelLink(item.id),
       categoryName: null,
       tags: [],
       durationSec: null,
@@ -181,6 +204,39 @@ export class YouTubeApi {
       viewCount: null,
       itemCount: item.statistics?.videoCount != null ? Number(item.statistics.videoCount) : null,
     };
+  }
+
+  /** Lists a playlist's videos with each one's length (2 quota units per 50 videos). */
+  async playlistItems(playlistId: string, max = MAX_PLAYLIST_ITEMS): Promise<PlaylistEntry[]> {
+    const entries: PlaylistEntry[] = [];
+    let pageToken = '';
+    do {
+      const body = await this.get('playlistItems', { part: 'snippet,contentDetails', playlistId, maxResults: '50', ...(pageToken && { pageToken }) });
+      for (const item of body.items ?? []) {
+        const s = item.snippet ?? {};
+        entries.push({
+          videoId: item.contentDetails?.videoId ?? s.resourceId?.videoId ?? '',
+          position: entries.length + 1,
+          title: s.title ?? '',
+          channelName: s.videoOwnerChannelTitle ?? '',
+          thumbnailUrl: s.thumbnails?.medium?.url ?? s.thumbnails?.default?.url ?? '',
+          durationSec: null,
+          available: false,
+        });
+      }
+      pageToken = body.nextPageToken ?? '';
+    } while (pageToken && entries.length < max);
+
+    const durations = new Map<string, number | null>();
+    for (const batch of chunks([...new Set(entries.map((e) => e.videoId).filter(Boolean))], BATCH)) {
+      const body = await this.get('videos', { part: 'contentDetails', id: batch.join(','), maxResults: '50' });
+      for (const item of body.items ?? []) durations.set(item.id, parseDuration(item.contentDetails?.duration));
+    }
+    for (const e of entries) {
+      e.available = durations.has(e.videoId);
+      e.durationSec = durations.get(e.videoId) ?? null;
+    }
+    return entries.slice(0, max);
   }
 
   /**

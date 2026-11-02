@@ -15,7 +15,7 @@ class FakeApi extends YouTubeApi {
     for (const r of reqs) {
       const k = `${r.type}:${r.youtubeId}`;
       if (this.known[k]) {
-        out.set(k, { title: '', description: '', thumbnailUrl: '', channelName: '', categoryName: null, tags: [], durationSec: null, publishedAt: null, viewCount: null, itemCount: null, ...this.known[k] });
+        out.set(k, { title: '', description: '', thumbnailUrl: '', channelName: '', channelUrl: '', categoryName: null, tags: [], durationSec: null, publishedAt: null, viewCount: null, itemCount: null, ...this.known[k] });
       }
     }
     return out;
@@ -173,5 +173,24 @@ describe('import and export', () => {
     const r = parseLinks('<a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ&amp;t=5">x</a> https://youtu.be/dQw4w9WgXcQ https://example.com');
     expect(r).toMatchObject({ invalid: 1, repeated: 1 });
     expect(r.items).toHaveLength(1);
+  });
+});
+
+describe('old app import', () => {
+  it('keeps link, type, watched and date; merges duplicate rows', async () => {
+    const { parseLegacyItems } = await import('./backup');
+    const parsed = parseLegacyItems([
+      { url: 'https://www.youtube.com/watch?v=QcCTQ0pyjME', type: 'video', watched: false, dateAdded: 1769777029808 },
+      { url: 'https://youtu.be/QcCTQ0pyjME?si=W088', type: 'video', watched: true, dateAdded: 1769777030000 },
+      { url: 'https://www.youtube.com/@appliedwithai/videos', type: 'channel', watched: false, dateAdded: 1769777031000 },
+    ]);
+    expect(parsed.repeated).toBe(1);
+    expect(parsed.items).toEqual([
+      expect.objectContaining({ type: 'video', youtubeId: 'QcCTQ0pyjME', watched: true, createdAt: '2026-01-30T12:43:49.808Z' }),
+      expect.objectContaining({ type: 'channel', url: 'https://www.youtube.com/@appliedwithai' }),
+    ]);
+    const { store } = await makeStore({}, '');
+    await store.importItems(parsed.items, 'merge');
+    expect(store.getSnapshot().bookmarks.find((b) => b.type === 'channel')?.channelUrl).toBe('https://www.youtube.com/@appliedwithai');
   });
 });
