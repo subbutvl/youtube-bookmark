@@ -9,6 +9,9 @@ import type { GameStorage } from './storage';
 const now = () => new Date().toISOString();
 /** Games looked up per round (one Wikipedia and one Wikidata request each). */
 const BATCH = 20;
+/** Pause between batches, and waits before retrying a batch that failed. */
+const PAUSE_MS = 300;
+const RETRY_WAITS = [3000, 10000, 30000];
 
 const isKey = <T extends string>(map: Record<T, string>) => (k: string): k is T => k in map;
 
@@ -67,8 +70,14 @@ export class GameStore {
   /** Games being looked up right now. */
   fetching = new Set<string>();
   progress: GameProgress | null = null;
+  /** Why the last lookup failed, shown in the Games tab ('' when it worked). */
+  lastError = '';
 
-  constructor(private readonly storage: GameStorage, private readonly fetchers: GameFetchers | null) {}
+  constructor(
+    private readonly storage: GameStorage,
+    private readonly fetchers: GameFetchers | null,
+    private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  ) {}
 
   async init() {
     this.lib = await this.storage.load();
@@ -211,20 +220,37 @@ export class GameStore {
     if (!todo.length) return;
     for (const id of todo) this.fetching.add(id);
     this.progress = { done: 0, total: (this.progress?.total ?? 0) - (this.progress?.done ?? 0) + todo.length };
+    this.lastError = '';
     this.emit();
     for (let i = 0; i < todo.length; i += BATCH) {
+      // After a batch fails even with retries, the rest wait for "Look up missing" instead of failing one by one.
+      const giveUp = !!this.lastError && i > 0;
       const batch = todo.map((id) => this.lib.games.find((g) => g.id === id)).slice(i, i + BATCH).filter((g): g is Game => !!g);
       try {
-        const found = await findArticles(f, batch);
-        const facts = await wikidataFacts(f, [...found.values()].map((p) => p.qid)).catch(() => new Map<string, GameFacts>());
+        if (giveUp) throw new Error(this.lastError);
+        // Wikipedia and Wikidata slow down clients that ask too fast: wait and try the batch again.
+        let found: Map<string, WikiPage> | null = null;
+        for (let attempt = 0; !found; attempt++) {
+          try {
+            found = await findArticles(f, batch);
+          } catch (e) {
+            if (attempt >= RETRY_WAITS.length) throw e;
+            await this.sleep(RETRY_WAITS[attempt]);
+          }
+        }
+        const facts = await wikidataFacts(f, [...found.values()].map((p) => p.qid))
+          .catch(async () => { await this.sleep(RETRY_WAITS[0]); return wikidataFacts(f, [...found!.values()].map((p) => p.qid)); })
+          .catch(() => new Map<string, GameFacts>());
         const next = batch.map((g) => {
-          const page = found.get(g.id);
+          const page = found!.get(g.id);
           if (!page) return { ...g, metadataStatus: 'failed' as const, fetchedAt: now() };
           return { ...applyFacts(g, page, page.qid ? facts.get(page.qid) : undefined), metadataStatus: 'ok' as const, fetchedAt: now(), updatedAt: now() };
         });
         // The game may have been changed or deleted meanwhile: only write games still saved.
         await this.put(next.filter((g) => this.lib.games.some((x) => x.id === g.id)));
-      } catch {
+        this.lastError = '';
+      } catch (e) {
+        if (!giveUp) this.lastError = e instanceof Error ? e.message : String(e);
         const failed = batch.filter((g) => this.lib.games.some((x) => x.id === g.id)).map((g) => ({ ...g, metadataStatus: 'failed' as const, fetchedAt: now() }));
         await this.put(failed).catch(() => {});
       } finally {
@@ -233,6 +259,7 @@ export class GameStore {
         if (this.progress && this.progress.done >= this.progress.total) this.progress = null;
         this.emit();
       }
+      if (i + BATCH < todo.length && !this.lastError) await this.sleep(PAUSE_MS);
     }
     // Games deleted before their turn.
     for (const id of todo) this.fetching.delete(id);

@@ -128,7 +128,7 @@ function fakeWeb() {
 describe('GameStore', () => {
   it('adds the top 500 once and fills links from Wikipedia and Wikidata', async () => {
     const web = fakeWeb();
-    const store = new GameStore(new MemoryStorage().games, { get: web.get });
+    const store = new GameStore(new MemoryStorage().games, { get: web.get }, async () => {});
     await store.init();
     const first = await store.addTop();
     expect(first).toEqual({ added: 500, skipped: 0 });
@@ -196,5 +196,30 @@ describe('GameStore', () => {
     expect(await again.importJson(json)).toEqual({ added: 0, skipped: 2 });
     const fresh = new GameStore(new MemoryStorage().games, null);
     expect(await fresh.importJson(json)).toEqual({ added: 2, skipped: 0 });
+  });
+
+  it('waits and retries when Wikipedia refuses, and says why when it keeps refusing', async () => {
+    const web = fakeWeb();
+    let refusals = 2;
+    const waits: number[] = [];
+    const flaky = async (url: string) => {
+      if (url.includes('wikipedia.org/w/api.php') && refusals-- > 0) throw new Error('The site answered 429 Too Many Requests');
+      return web.get(url);
+    };
+    const store = new GameStore(new MemoryStorage().games, { get: flaky }, async (ms) => { waits.push(ms); });
+    await store.init();
+    await store.addManual(blankGame({ title: 'The Witcher 3: Wild Hunt', year: 2015 }));
+    await store.fetchDetails(store.getSnapshot().games.map((g) => g.id));
+    expect(store.getSnapshot().games[0]).toMatchObject({ metadataStatus: 'ok', coverUrl: 'https://upload.wikimedia.org/w3.jpg' });
+    expect(waits).toEqual([3000, 10000]);
+    expect(store.lastError).toBe('');
+
+    const down = new GameStore(new MemoryStorage().games, { get: async () => { throw new Error('The site answered 429 Too Many Requests'); } }, async () => {});
+    await down.init();
+    for (let i = 0; i < 45; i++) await down.addManual(blankGame({ title: `Game ${i}` }));
+    await down.fetchDetails(down.getSnapshot().games.map((g) => g.id));
+    expect(down.getSnapshot().games.every((g) => g.metadataStatus === 'failed')).toBe(true);
+    expect(down.lastError).toMatch(/429/);
+    expect(down.progress).toBeNull();
   });
 });

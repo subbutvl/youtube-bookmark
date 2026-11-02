@@ -110,8 +110,8 @@ export function GamesView({ shell }: { shell: Shell }) {
   useEffect(() => {
     if (resumed || !store.canFetch) return;
     resumed = true;
-    // Also games found before covers could be read (Wikipedia only lists free images unless asked).
-    const left = store.getSnapshot().games.filter((g) => g.metadataStatus === 'pending' || (g.metadataStatus === 'ok' && !g.coverUrl && g.wikiUrl));
+    // Also games whose lookup failed, and games found before covers could be read (Wikipedia only lists free images unless asked).
+    const left = store.getSnapshot().games.filter((g) => g.metadataStatus === 'pending' || g.metadataStatus === 'failed' || (g.metadataStatus === 'ok' && !g.coverUrl && g.wikiUrl));
     if (left.length) void store.fetchDetails(left.map((g) => g.id));
   }, [store]);
 
@@ -241,6 +241,9 @@ export function GamesView({ shell }: { shell: Shell }) {
             )}
             <span className="result-count">{items.length.toLocaleString()} {items.length === 1 ? 'game' : 'games'}</span>
           </div>
+          {store.lastError && !store.progress && failed.length > 0 && (
+            <div className="note">Couldn’t look up {failed.length} game{failed.length === 1 ? '' : 's'}: {store.lastError}. Use “Look up {pending.length + failed.length} missing” to try again.</div>
+          )}
 
           {store.progress && (
             <div className="banner">
