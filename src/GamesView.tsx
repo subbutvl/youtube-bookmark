@@ -110,7 +110,8 @@ export function GamesView({ shell }: { shell: Shell }) {
   useEffect(() => {
     if (resumed || !store.canFetch) return;
     resumed = true;
-    const left = store.getSnapshot().games.filter((g) => g.metadataStatus === 'pending');
+    // Also games found before covers could be read (Wikipedia only lists free images unless asked).
+    const left = store.getSnapshot().games.filter((g) => g.metadataStatus === 'pending' || (g.metadataStatus === 'ok' && !g.coverUrl && g.wikiUrl));
     if (left.length) void store.fetchDetails(left.map((g) => g.id));
   }, [store]);
 

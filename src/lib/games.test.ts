@@ -104,7 +104,8 @@ function fakeWeb() {
       const out = titles.map((t) => {
         const p = pages[t];
         return p
-          ? { title: t, description: p.description, extract: `${t} is a game.`, original: p.image ? { source: p.image } : undefined, pageprops: { wikibase_item: p.qid, ...(p.description === 'Disambiguation' ? { disambiguation: '' } : {}) } }
+          ? { title: t, description: p.description, extract: `${t} is a game.`, // Game covers are non-free images: Wikipedia lists them only when asked for any license.
+            thumbnail: p.image && u.searchParams.get('pilicense') === 'any' ? { source: p.image } : undefined, pageprops: { wikibase_item: p.qid, ...(p.description === 'Disambiguation' ? { disambiguation: '' } : {}) } }
           : { title: t, missing: true };
       });
       return JSON.stringify({ query: { normalized, pages: out } });

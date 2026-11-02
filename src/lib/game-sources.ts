@@ -50,7 +50,7 @@ export async function wikiPages(f: GameFetchers, titles: string[]): Promise<Map<
   const out = new Map<string, WikiPage>();
   for (let i = 0; i < titles.length; i += 20) {
     const batch = titles.slice(i, i + 20);
-    const url = `${WP}&action=query&redirects=1&prop=pageprops|pageimages|description|extracts&ppprop=wikibase_item|disambiguation&piprop=original|thumbnail&pithumbsize=600&exintro=1&explaintext=1&exsentences=3&exlimit=20&titles=${encodeURIComponent(batch.join('|'))}`;
+    const url = `${WP}&action=query&redirects=1&prop=pageprops|pageimages|description|extracts&ppprop=wikibase_item|disambiguation&piprop=original|thumbnail&pithumbsize=600&pilicense=any&exintro=1&explaintext=1&exsentences=3&exlimit=20&titles=${encodeURIComponent(batch.join('|'))}`;
     const r = parseJson(await f.get(url));
     // Asked-for title → final title, through normalization and redirects.
     const hop = new Map<string, string>();
@@ -66,7 +66,8 @@ export async function wikiPages(f: GameFetchers, titles: string[]): Promise<Map<
         title: p.title,
         description: p.description ?? '',
         summary: (p.extract ?? '').trim(),
-        imageUrl: p.original?.source ?? p.thumbnail?.source ?? '',
+        // The 600px thumbnail is plenty for a cover and much lighter than the original upload.
+        imageUrl: p.thumbnail?.source ?? p.original?.source ?? '',
         qid: p.pageprops?.wikibase_item ?? '',
       });
     }
