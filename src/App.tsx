@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { VideoPlayer, type PlayerMode } from './components/VideoPlayer';
+import { BooksView } from './BooksView';
 import { GamesView } from './GamesView';
 import { LinksView } from './LinksView';
-import { MediaView } from './MediaView';
 import { MoviesView } from './MoviesView';
 import { RssView } from './RssView';
 import type { Bookmark } from './lib/types';
-import { MODES, PLACEHOLDER_MODES, useLibrary, usePref, useResolvedTheme, useStore, type Mode, type PlaceholderMode, type Shell, type ThemePref } from './state';
+import { MODES, useLibrary, usePref, useResolvedTheme, useStore, type Mode, type Shell, type ThemePref } from './state';
 import { YouTubeView } from './YouTubeView';
 
 /**
  * Switches between the tabs (YouTube, Links, Git, Wikipedia, RSS, Movies, TV Shows, Books, Games), remembering the last one for the next launch.
  * The video player lives here so picture in picture keeps playing across the switch.
  */
-const isPlaceholder = (m: Mode): m is PlaceholderMode => (PLACEHOLDER_MODES as Mode[]).includes(m);
 
 export default function App() {
   const store = useStore();
@@ -52,8 +51,8 @@ export default function App() {
         <MoviesView key={mode} shell={shell} kind={mode === 'tv' ? 'tv' : 'movie'} />
       ) : mode === 'games' ? (
         <GamesView shell={shell} />
-      ) : isPlaceholder(mode) ? (
-        <MediaView key={mode} shell={shell} kind={mode} />
+      ) : mode === 'books' ? (
+        <BooksView shell={shell} />
       ) : (
         <LinksView key={mode} shell={shell} section={mode} />
       )}

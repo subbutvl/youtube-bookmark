@@ -15,7 +15,7 @@ export interface GameFetchers {
 }
 
 type Json = Record<string, any>;
-const WP = 'https://en.wikipedia.org/w/api.php?format=json&formatversion=2&origin=*';
+const wp = (lang: string) => `https://${lang}.wikipedia.org/w/api.php?format=json&formatversion=2&origin=*`;
 const WD = 'https://www.wikidata.org/w/api.php?format=json&origin=*';
 
 function parseJson(text: string): Json {
@@ -26,7 +26,7 @@ function parseJson(text: string): Json {
   }
 }
 
-export const wikiUrl = (title: string) => `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+export const wikiUrl = (title: string, lang = 'en') => `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 export const wikiTitleFromUrl = (url: string): string => {
   const m = url.match(/wikipedia\.org\/wiki\/([^?#]+)/);
   return m ? decodeURIComponent(m[1]).replace(/_/g, ' ') : '';
@@ -46,11 +46,11 @@ export const isGamePage = (p: Pick<WikiPage, 'description' | 'title'>) =>
   /\(.*video game\)$/.test(p.title) || (/\bgame\b|video ?game|\bMMO|\bMOBA\b|\bsimulator\b/i.test(p.description) && !/\b(series|franchise|company|developer|character|film|engine)\b/i.test(p.description));
 
 /** Looks up articles by exact title (up to 20 at once), following redirects. Returns them keyed by the title asked for. */
-export async function wikiPages(f: GameFetchers, titles: string[]): Promise<Map<string, WikiPage>> {
+export async function wikiPages(f: GameFetchers, titles: string[], lang = 'en'): Promise<Map<string, WikiPage>> {
   const out = new Map<string, WikiPage>();
   for (let i = 0; i < titles.length; i += 20) {
     const batch = titles.slice(i, i + 20);
-    const url = `${WP}&action=query&redirects=1&prop=pageprops|pageimages|description|extracts&ppprop=wikibase_item|disambiguation&piprop=original|thumbnail&pithumbsize=600&pilicense=any&exintro=1&explaintext=1&exsentences=3&exlimit=20&titles=${encodeURIComponent(batch.join('|'))}`;
+    const url = `${wp(lang)}&action=query&redirects=1&prop=pageprops|pageimages|description|extracts&ppprop=wikibase_item|disambiguation&piprop=original|thumbnail&pithumbsize=600&pilicense=any&exintro=1&explaintext=1&exsentences=3&exlimit=20&titles=${encodeURIComponent(batch.join('|'))}`;
     const r = parseJson(await f.get(url));
     // Asked-for title → final title, through normalization and redirects.
     const hop = new Map<string, string>();
