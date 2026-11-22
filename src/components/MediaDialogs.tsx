@@ -26,6 +26,7 @@ interface AddProps {
   /** Set when choosing the right match for a title already saved. */
   relink?: MediaItem;
   onClose: () => void;
+  /** Opens a title that's already saved (the dialog closes). */
   onAdded: (item: MediaItem, existed: boolean) => void;
   onManual: (draft: MediaItem) => void;
 }
@@ -40,6 +41,9 @@ export function MediaAddDialog({ kind, initialText, relink, onClose, onAdded, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const asked = useRef('');
+  const box = useRef<HTMLInputElement>(null);
+  /** Titles added in this dialog, so the list can show them as done while you keep adding. */
+  const [addedNow, setAddedNow] = useState(0);
   const input = text.trim() ? parseMediaInput(text) : null;
 
   const run = async (q = text, sc = scope) => {
@@ -79,7 +83,12 @@ export function MediaAddDialog({ kind, initialText, relink, onClose, onAdded, on
       }
       const link = input && (input.kind === 'wiki' || (input.kind === 'search' && input.url)) ? [{ label: linkLabel(input.url!), url: input.url! }] : [];
       const r = await store.addCandidate(c, { links: link });
-      onAdded(r.item, r.existed);
+      setAddedNow((n) => n + 1);
+      const elsewhere = r.item.kind !== kind;
+      toast({ text: `${r.existed ? 'Already saved' : 'Added'}${elsewhere ? ` to ${r.item.kind === 'tv' ? 'TV Shows' : 'Movies'}` : ''}: ${r.item.title}${r.item.year ? ` (${r.item.year})` : ''}. Search for the next one.` });
+      // Stay open for the next title: the box is selected, so typing replaces it.
+      box.current?.focus();
+      box.current?.select();
     } catch (e) {
       setError(errorText(e));
     }
@@ -107,6 +116,7 @@ export function MediaAddDialog({ kind, initialText, relink, onClose, onAdded, on
           <span className="hint">Details come from JustWatch, IMDb and Wikipedia. Anything can be edited later.</span>
           <span className="spacer" />
           {!relink && <button type="button" className="btn" onClick={manual}><IconPlus size={14} />Add by hand</button>}
+          {!relink && <button type="button" className="btn btn-primary" onClick={onClose}>{addedNow ? `Done (${addedNow} added)` : 'Done'}</button>}
         </>
       }
     >
@@ -115,7 +125,7 @@ export function MediaAddDialog({ kind, initialText, relink, onClose, onAdded, on
           <div className="search" style={{ maxWidth: 'none' }}>
             <IconSearch />
             <label htmlFor="media-q" className="sr-only">Name or link</label>
-            <input id="media-q" className="input" autoFocus placeholder="Name in any language, or an IMDb, Wikipedia, JustWatch or Rotten Tomatoes link" value={text} onChange={(e) => setText(e.target.value)} />
+            <input id="media-q" ref={box} className="input" autoFocus placeholder="Name in any language, or an IMDb, Wikipedia, JustWatch or Rotten Tomatoes link" value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div className="seg" role="group" aria-label="Search in">
             <button type="button" aria-pressed={scope === 'kind'} onClick={() => { setScope('kind'); void run(text, 'kind'); }}>{kind === 'tv' ? 'TV shows' : 'Movies'}</button>
@@ -148,7 +158,7 @@ export function MediaAddDialog({ kind, initialText, relink, onClose, onAdded, on
                     </div>
                   </div>
                   {saved ? (
-                    <button type="button" className="btn btn-sm" onClick={() => onAdded(saved, true)}>Saved · show</button>
+                    <button type="button" className="btn btn-sm" title="Open its page" onClick={() => onAdded(saved, true)}>✓ Saved · open</button>
                   ) : (
                     <button type="button" className="btn btn-sm btn-primary" onClick={() => void pick(c)}>{relink ? 'Use this' : 'Add'}</button>
                   )}
