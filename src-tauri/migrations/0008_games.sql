@@ -1,0 +1,27 @@
+-- Games. Platforms, genres, types and extra links are JSON lists; links here never go to the links table.
+CREATE TABLE IF NOT EXISTS games (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  year INTEGER,
+  platforms TEXT NOT NULL DEFAULT '[]',
+  genres TEXT NOT NULL DEFAULT '[]',
+  origin TEXT NOT NULL DEFAULT '',
+  types TEXT NOT NULL DEFAULT '[]',
+  hours REAL,
+  official_url TEXT NOT NULL DEFAULT '',
+  ign_url TEXT NOT NULL DEFAULT '',
+  wiki_url TEXT NOT NULL DEFAULT '',
+  trailer_id TEXT NOT NULL DEFAULT '',
+  links TEXT NOT NULL DEFAULT '[]',
+  cover_url TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  developer TEXT NOT NULL DEFAULT '',
+  rank INTEGER,
+  status TEXT NOT NULL DEFAULT 'none',
+  my_rating REAL,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  fetched_at TEXT,
+  metadata_status TEXT NOT NULL DEFAULT 'pending'
+);

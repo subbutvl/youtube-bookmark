@@ -1,10 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { GameStore } from './lib/game-store';
 import { LibraryStore } from './lib/library';
 import { LinkStore } from './lib/link-store';
 import { MediaStore } from './lib/media-store';
 import { fetchPageMeta, fetchText, postJson } from './lib/platform';
+import { ReadStore } from './lib/read-store';
 import { RssStore } from './lib/rss-store';
 import { isTauri, MemoryStorage, SqliteStorage } from './lib/storage';
 import { mediaCountry, StoreProvider, ToastProvider } from './state';
@@ -22,17 +24,22 @@ async function start() {
     const rssStore = new RssStore(storage.rss, fetchText);
     const mediaFetchers = isTauri() ? { get: async (url: string) => (await fetchText(url)).body, postJson } : null;
     const mediaStore = new MediaStore(storage.media, mediaFetchers, mediaCountry);
+    const gameStore = new GameStore(storage.games, mediaFetchers);
+    const readStore = new ReadStore(storage.reading, mediaFetchers);
     // Movie and TV links pasted or imported anywhere go to the Movies and TV Shows tabs, never to Links.
     linkStore.mediaSink = (urls) => void mediaStore.addLinks(urls);
-    await Promise.all([store.init(), linkStore.init(), rssStore.init(), mediaStore.init()]);
+    await Promise.all([store.init(), linkStore.init(), rssStore.init(), mediaStore.init(), gameStore.init(), readStore.init()]);
     // Feeds are read again every half hour while the app is open (and at start, if stale).
     if (isTauri()) {
       void rssStore.refreshAll(REFRESH_MS);
+      // Games and books whose lookup didn't finish (app closed, or Wikipedia busy) are looked up again at every launch.
+      gameStore.resume();
+      readStore.resume();
       setInterval(() => void rssStore.refreshAll(REFRESH_MS), 5 * 60_000);
     }
     root.render(
       <StrictMode>
-        <StoreProvider store={store} linkStore={linkStore} rssStore={rssStore} mediaStore={mediaStore}>
+        <StoreProvider store={store} linkStore={linkStore} rssStore={rssStore} mediaStore={mediaStore} gameStore={gameStore} readStore={readStore}>
           <ToastProvider>
             <App />
           </ToastProvider>

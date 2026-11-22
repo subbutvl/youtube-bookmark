@@ -1,0 +1,31 @@
+-- Books, comics and magazines. Genres, adaptations and extra links are JSON lists; links here never go to the links table.
+CREATE TABLE IF NOT EXISTS read_items (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT 'book',
+  title TEXT NOT NULL DEFAULT '',
+  original_title TEXT NOT NULL DEFAULT '',
+  authors TEXT NOT NULL DEFAULT '',
+  year INTEGER,
+  language TEXT NOT NULL DEFAULT '',
+  genres TEXT NOT NULL DEFAULT '[]',
+  category TEXT NOT NULL DEFAULT '',
+  publisher TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  synopsis TEXT NOT NULL DEFAULT '',
+  cover_url TEXT NOT NULL DEFAULT '',
+  wiki_url TEXT NOT NULL DEFAULT '',
+  goodreads_url TEXT NOT NULL DEFAULT '',
+  official_url TEXT NOT NULL DEFAULT '',
+  adaptations TEXT NOT NULL DEFAULT '[]',
+  links TEXT NOT NULL DEFAULT '[]',
+  qid TEXT NOT NULL DEFAULT '',
+  rank INTEGER,
+  status TEXT NOT NULL DEFAULT 'none',
+  my_rating REAL,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  fetched_at TEXT,
+  metadata_status TEXT NOT NULL DEFAULT 'pending'
+);
+CREATE INDEX IF NOT EXISTS read_items_kind ON read_items(kind);

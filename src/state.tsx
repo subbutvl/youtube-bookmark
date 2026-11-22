@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import type { GameStore } from './lib/game-store';
 import type { LibraryStore } from './lib/library';
 import type { LinkStore } from './lib/link-store';
 import type { MediaStore } from './lib/media-store';
+import type { ReadStore } from './lib/read-store';
 import type { RssStore } from './lib/rss-store';
 import type { Category, Tag } from './lib/types';
 
@@ -9,17 +11,45 @@ const StoreContext = createContext<LibraryStore | null>(null);
 const LinkStoreContext = createContext<LinkStore | null>(null);
 const RssStoreContext = createContext<RssStore | null>(null);
 const MediaStoreContext = createContext<MediaStore | null>(null);
+const GameStoreContext = createContext<GameStore | null>(null);
+const ReadStoreContext = createContext<ReadStore | null>(null);
 
-export function StoreProvider({ store, linkStore, rssStore, mediaStore, children }: { store: LibraryStore; linkStore: LinkStore; rssStore: RssStore; mediaStore: MediaStore; children: ReactNode }) {
+export function StoreProvider({ store, linkStore, rssStore, mediaStore, gameStore, readStore, children }: { store: LibraryStore; linkStore: LinkStore; rssStore: RssStore; mediaStore: MediaStore; gameStore: GameStore; readStore: ReadStore; children: ReactNode }) {
   return (
     <StoreContext.Provider value={store}>
       <LinkStoreContext.Provider value={linkStore}>
         <RssStoreContext.Provider value={rssStore}>
-          <MediaStoreContext.Provider value={mediaStore}>{children}</MediaStoreContext.Provider>
+          <MediaStoreContext.Provider value={mediaStore}>
+            <GameStoreContext.Provider value={gameStore}>
+              <ReadStoreContext.Provider value={readStore}>{children}</ReadStoreContext.Provider>
+            </GameStoreContext.Provider>
+          </MediaStoreContext.Provider>
         </RssStoreContext.Provider>
       </LinkStoreContext.Provider>
     </StoreContext.Provider>
   );
+}
+
+export function useGameStore(): GameStore {
+  const s = useContext(GameStoreContext);
+  if (!s) throw new Error('useGameStore outside StoreProvider');
+  return s;
+}
+
+export function useGames() {
+  const store = useGameStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+
+export function useReadStore(): ReadStore {
+  const s = useContext(ReadStoreContext);
+  if (!s) throw new Error('useReadStore outside StoreProvider');
+  return s;
+}
+
+export function useReading() {
+  const store = useReadStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
 export function useMediaStore(): MediaStore {
@@ -76,10 +106,8 @@ export function useLibrary() {
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
-export type PlaceholderMode = 'books' | 'games';
 export type MediaMode = 'movies' | 'tv';
-export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | MediaMode | PlaceholderMode;
-export const PLACEHOLDER_MODES: PlaceholderMode[] = ['books', 'games'];
+export type Mode = 'youtube' | 'links' | 'git' | 'wiki' | 'rss' | MediaMode | 'books' | 'games';
 export const MODES: { id: Mode; label: string }[] = [
   { id: 'youtube', label: 'YouTube' },
   { id: 'links', label: 'Links' },
