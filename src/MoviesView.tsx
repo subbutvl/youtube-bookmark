@@ -125,7 +125,6 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
       setModal(null);
       return;
     }
-    if (existed) toast({ text: `${item.title} is already saved.` });
     setModal({ kind: 'open', id: item.id });
   };
 
@@ -332,7 +331,12 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
           item={modal.item}
           isNew={modal.isNew}
           onClose={() => setModal(modal.isNew ? null : { kind: 'open', id: modal.item.id })}
-          onSaved={(item) => (item.kind === kind ? setModal({ kind: 'open', id: item.id }) : added(item, false))}
+          onSaved={(item) => {
+            if (!modal.isNew) return setModal({ kind: 'open', id: item.id });
+            // Added by hand: back to the search for the next title.
+            toast({ text: `Added ${item.title}. Search for the next one.` });
+            setModal({ kind: 'add', text: '' });
+          }}
         />
       )}
       {opened && (
