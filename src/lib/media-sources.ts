@@ -139,6 +139,17 @@ export async function searchJustWatch(f: MediaFetchers, q: string, kind: MediaKi
   return (data.popularTitles?.edges ?? []).map((e: Json) => fromJw(e.node)).filter(Boolean) as Candidate[];
 }
 
+const SIMILAR_QUERY = `query Similar($c: Country!, $l: Language!, $p: String!, $n: Int!) {
+  urlV2(fullPath: $p) { node { ... on MovieOrShow { similarTitlesV2(country: $c, first: $n) { edges { node { ${JW_FIELDS} } } } } } }
+}`;
+
+/** JustWatch's "similar titles" for a title's page, best first. */
+export async function similarOnJustWatch(f: MediaFetchers, path: string, country: string, n = 10): Promise<Candidate[]> {
+  const p = path.replace(/^\/[a-z]{2}\//, `/${country.toLowerCase()}/`);
+  const data = await jw(f, SIMILAR_QUERY, { c: country, l: 'en', p, n });
+  return (data.urlV2?.node?.similarTitlesV2?.edges ?? []).map((e: Json) => fromJw(e.node)).filter(Boolean) as Candidate[];
+}
+
 export async function justWatchByPath(f: MediaFetchers, path: string, country: string): Promise<Candidate | null> {
   // A page from another country's site still names the same title.
   const p = path.replace(/^\/[a-z]{2}\//, `/${country.toLowerCase()}/`);
