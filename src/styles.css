@@ -659,3 +659,13 @@ button.cat-pill:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .md-plot { margin: 0; line-height: 1.6; white-space: pre-line; }
 .md-adaptations { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .md-adapt-group { display: flex; flex-direction: column; gap: 4px; }
+.md-similar-head { display: flex; align-items: baseline; gap: 10px; }
+.md-similar-head .spacer { flex: 1; }
+.md-similar { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; scrollbar-width: thin; }
+.msim { flex: none; width: 118px; border: 0; padding: 0; background: none; color: inherit; text-align: left; display: flex; flex-direction: column; gap: 3px; scroll-snap-align: start; }
+.msim-poster { position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--surface2); border: 1px solid var(--border); }
+.msim:hover .msim-poster { border-color: var(--border-strong); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); }
+.msim-flag { position: absolute; right: 5px; top: 5px; padding: 1px 6px; border-radius: 5px; font-size: 11px; font-weight: 600; background: rgba(0, 0, 0, 0.72); color: #fff; opacity: 0; transition: opacity 0.15s; }
+.msim-flag.saved { background: #2e7d3e; opacity: 1; }
+.msim:hover .msim-flag { opacity: 1; }
+.msim-title { font-size: 12px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

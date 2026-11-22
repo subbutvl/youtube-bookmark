@@ -1,4 +1,4 @@
-import { addLink, linkLabel, findTrailer, findWikiArticle, justWatchByPath, languageFromScript, parseMediaInput, searchImdb, searchJustWatch, searchTitles, wikidataByImdb, wikiSummary, type Candidate, type MediaFetchers } from './media-sources';
+import { addLink, linkLabel, findTrailer, similarOnJustWatch, findWikiArticle, justWatchByPath, languageFromScript, parseMediaInput, searchImdb, searchJustWatch, searchTitles, wikidataByImdb, wikiSummary, type Candidate, type MediaFetchers } from './media-sources';
 import { blankItem, normTitle, sameTitle, type MediaItem, type MediaKind, type MediaLibrary, type WatchOption } from './media-types';
 import { TOP_MOVIES, TOP_TV } from './media-top';
 import type { MediaStorage } from './storage';
@@ -404,6 +404,48 @@ export class MediaStore {
 
     const found = !!hit || next.links.some((l) => /wikipedia\.org/.test(l.url));
     return { ...next, fetchedAt: now(), updatedAt: now(), metadataStatus: found ? 'ok' : 'failed' };
+  }
+
+  private similarCache = new Map<string, Candidate[]>();
+
+  /**
+   * Titles like this one, for the carousel on its page: JustWatch's similar titles, else saved titles
+   * that share the most genres. Kept for the session so reopening a page is instant.
+   */
+  async similar(id: string, n = 10): Promise<Candidate[]> {
+    const item = this.lib.items.find((i) => i.id === id);
+    if (!item) return [];
+    const key = `${item.justwatchPath}|${item.title}|${this.country()}`;
+    const hit = this.similarCache.get(key);
+    if (hit) return hit;
+    let out: Candidate[] = [];
+    if (this.fetchers && item.justwatchPath) {
+      try {
+        out = (await similarOnJustWatch(this.fetchers, item.justwatchPath, this.country(), n + 2)).filter((c) => !sameTitle(c, item));
+      } catch {
+        out = [];
+      }
+    }
+    if (out.length < 4) out = [...out, ...this.alike(item, n)].filter((c, i, all) => all.findIndex((x) => sameTitle(x, c)) === i);
+    out = out.slice(0, n);
+    if (out.length) this.similarCache.set(key, out);
+    return out;
+  }
+
+  /** Saved titles of the same kind sharing the most genres (then language), best rated first. */
+  private alike(item: MediaItem, n: number): Candidate[] {
+    const genres = new Set(item.genres);
+    return this.lib.items
+      .filter((i) => i.id !== item.id && i.kind === item.kind)
+      .map((i) => ({ i, score: i.genres.filter((g) => genres.has(g)).length * 2 + (item.language && i.language === item.language ? 1 : 0) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || (b.i.imdbRating ?? 0) - (a.i.imdbRating ?? 0))
+      .slice(0, n)
+      .map(({ i }) => ({
+        source: 'justwatch' as const, kind: i.kind, title: i.title, originalTitle: i.originalTitle, year: i.year, posterUrl: i.posterUrl, imdbId: i.imdbId,
+        imdbRating: i.imdbRating, imdbVotes: i.imdbVotes, rtScore: i.rtScore, synopsis: i.synopsis, genres: i.genres, runtime: i.runtime, seasons: i.seasons,
+        justwatchPath: i.justwatchPath, watch: i.watch, trailerId: i.trailerId, note: '',
+      }));
   }
 
   /** Finds a trailer on YouTube for a title that has none (done when its details are opened). */

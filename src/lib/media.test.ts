@@ -177,6 +177,32 @@ describe('duplicates and rewatches', () => {
   });
 });
 
+describe('more like this', () => {
+  it('uses JustWatch similar titles, without the title itself', async () => {
+    const f: MediaFetchers = {
+      async postJson(_u, body) {
+        expect(JSON.parse(body).query).toContain('similarTitlesV2');
+        return JSON.stringify({ data: { urlV2: { node: { similarTitlesV2: { edges: [{ node: jwNode('Inception', 2010, 'tt1375666') }, { node: jwNode('Tenet', 2020, 'tt6723592') }] } } } } });
+      },
+      async get() {
+        throw new Error('no');
+      },
+    };
+    const store = new MediaStore(new MemoryStorage().media, f, () => 'IN');
+    const { item } = await store.addManual(blankItem('movie', { title: 'Inception', imdbId: 'tt1375666', justwatchPath: '/in/movie/inception' }));
+    expect((await store.similar(item.id)).map((c) => c.title)).toEqual(['Tenet']);
+  });
+
+  it('falls back to saved titles that share genres', async () => {
+    const store = new MediaStore(new MemoryStorage().media, null, () => 'IN');
+    const { item } = await store.addManual(blankItem('movie', { title: 'A', genres: ['Drama', 'Crime'] }));
+    await store.addManual(blankItem('movie', { title: 'B', genres: ['Crime', 'Drama'], imdbRating: 8 }));
+    await store.addManual(blankItem('movie', { title: 'C', genres: ['Comedy'] }));
+    await store.addManual(blankItem('tv', { title: 'D', genres: ['Drama'] }));
+    expect((await store.similar(item.id)).map((c) => c.title)).toEqual(['B']);
+  });
+});
+
 describe('Links hand movie links over', () => {
   it('does not save IMDb links in Links', async () => {
     const storage = new MemoryStorage();

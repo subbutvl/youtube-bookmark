@@ -346,6 +346,7 @@ export function MoviesView({ shell, kind }: { shell: Shell; kind: MediaKind }) {
           onClose={() => setModal(null)}
           onEdit={() => setModal({ kind: 'edit', item: opened, isNew: false })}
           onRelink={() => setModal({ kind: 'relink', id: opened.id })}
+          onOpen={(id) => setModal({ kind: 'open', id })}
         />
       )}
       {modal?.kind === 'settings' && (

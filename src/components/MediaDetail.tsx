@@ -1,10 +1,10 @@
-import { useEffect, useId, useState } from 'react';
-import { addLink, linkLabel, standardLinks } from '../lib/media-sources';
+import { useEffect, useId, useRef, useState } from 'react';
+import { addLink, linkLabel, standardLinks, type Candidate } from '../lib/media-sources';
 import { COMMON_PROVIDERS, COUNTRIES, OFFER_LABELS, STATUS_LABELS, type MediaItem, type OfferType, type WatchStatus } from '../lib/media-types';
 import { openExternal } from '../lib/platform';
 import { parseLink } from '../lib/link-url';
 import { errorText, mediaCountry, useEscape, useMediaStore, useToast } from '../state';
-import { IconClose, IconEdit, IconExternal, IconPlus, IconRefresh, IconSearch, IconTrash } from './Icons';
+import { IconBack, IconClose, IconForward, IconEdit, IconExternal, IconPlus, IconRefresh, IconSearch, IconTrash } from './Icons';
 import { fmtVotes, Poster } from './MediaDialogs';
 
 interface Props {
@@ -12,12 +12,78 @@ interface Props {
   onClose: () => void;
   onEdit: () => void;
   onRelink: () => void;
+  /** Shows another saved title's page. */
+  onOpen: (id: string) => void;
+}
+
+/** A row of titles like this one; clicking a saved one opens it, clicking a new one adds it and opens it. */
+function MoreLikeThis({ item, onOpen }: { item: MediaItem; onOpen: (id: string) => void }) {
+  const store = useMediaStore();
+  const toast = useToast();
+  const [list, setList] = useState<Candidate[] | null>(null);
+  const row = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let live = true;
+    setList(null);
+    store.similar(item.id).then((l) => live && setList(l), () => live && setList([]));
+    return () => {
+      live = false;
+    };
+    // Looked up again when the title is matched to a different JustWatch page.
+  }, [store, item.id, item.justwatchPath]);
+
+  if (list && !list.length) return null;
+  const go = async (c: Candidate) => {
+    const saved = store.find(c);
+    if (saved) return onOpen(saved.id);
+    try {
+      const r = await store.addCandidate(c);
+      toast({ text: `Added ${r.item.title}${r.item.year ? ` (${r.item.year})` : ''}.`, action: { label: 'Undo', run: () => { void store.remove([r.item.id]); onOpen(item.id); } } }, 7000);
+      onOpen(r.item.id);
+    } catch (e) {
+      toast({ text: errorText(e) });
+    }
+  };
+  const scroll = (dir: number) => row.current?.scrollBy({ left: dir * row.current.clientWidth * 0.8, behavior: 'smooth' });
+
+  return (
+    <section className="md-section">
+      <div className="md-similar-head">
+        <h3>More like this</h3>
+        <span className="hint">Click a title to open it; ones you haven’t saved are added.</span>
+        <span className="spacer" />
+        <button type="button" className="icon-btn sm" aria-label="Scroll left" onClick={() => scroll(-1)}><IconBack /></button>
+        <button type="button" className="icon-btn sm" aria-label="Scroll right" onClick={() => scroll(1)}><IconForward /></button>
+      </div>
+      {!list ? (
+        <span className="hint">Finding similar {item.kind === 'tv' ? 'shows' : 'movies'}…</span>
+      ) : (
+        <div className="md-similar" ref={row}>
+          {list.map((c) => {
+            const saved = !!store.find(c);
+            return (
+              <button type="button" className="msim" key={`${c.justwatchPath || c.imdbId || c.title}-${c.year}`} onClick={() => void go(c)} title={c.synopsis || c.title}>
+                <span className="msim-poster">
+                  <Poster url={c.posterUrl} title={c.title} className="mposter-img" />
+                  {c.imdbRating != null && <span className="mbadge">★ {c.imdbRating.toFixed(1)}</span>}
+                  <span className={`msim-flag${saved ? ' saved' : ''}`}>{saved ? '✓ Saved' : '+ Add'}</span>
+                </span>
+                <span className="msim-title">{c.title}</span>
+                {c.year && <span className="hint">{c.year}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }
 
 const STATUSES: WatchStatus[] = ['want', 'watching', 'watched'];
 
 /** A title's page: poster, ratings, synopsis, trailer, where to watch, links and notes. */
-export function MediaDetail({ item, onClose, onEdit, onRelink }: Props) {
+export function MediaDetail({ item, onClose, onEdit, onRelink, onOpen }: Props) {
   const store = useMediaStore();
   const toast = useToast();
   const id = useId();
@@ -131,6 +197,8 @@ export function MediaDetail({ item, onClose, onEdit, onRelink }: Props) {
               )}
             </div>
           </div>
+
+          <MoreLikeThis item={item} onOpen={onOpen} />
 
           <section className="md-section">
             <h3>Trailer</h3>
